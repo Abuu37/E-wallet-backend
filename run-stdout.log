@@ -1,0 +1,124 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< com.application:e-wallet >----------------------
+[INFO] Building  0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:4.2.0-SNAPSHOT:run (default-cli) > test-compile @ e-wallet >>>
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ e-wallet ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 6 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.16.0:compile (default-compile) @ e-wallet ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ e-wallet ---
+[INFO] skip non existing resourceDirectory C:\Users\HomePC\Desktop\spring\e-wallet\e-wallet\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.16.0:testCompile (default-testCompile) @ e-wallet ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:4.2.0-SNAPSHOT:run (default-cli) < test-compile @ e-wallet <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:4.2.0-SNAPSHOT:run (default-cli) @ e-wallet ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::       (v4.2.0-SNAPSHOT)
+
+2026-09-24T15:52:07.259+03:00  INFO 13728 --- [e-wallet] [  restartedMain] c.a.e_wallet.EWalletApplication          : Starting EWalletApplication using Java 21.0.12.1 with PID 13728 (C:\Users\HomePC\Desktop\spring\e-wallet\e-wallet\target\classes started by HomePC in C:\Users\HomePC\Desktop\spring\e-wallet\e-wallet)
+2026-09-24T15:52:07.271+03:00  INFO 13728 --- [e-wallet] [  restartedMain] c.a.e_wallet.EWalletApplication          : No active profile set, falling back to 1 default profile: "default"
+2026-09-24T15:52:07.389+03:00  INFO 13728 --- [e-wallet] [  restartedMain] .e.DevToolsPropertyDefaultsPostProcessor : Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-09-24T15:52:07.396+03:00  INFO 13728 --- [e-wallet] [  restartedMain] .e.DevToolsPropertyDefaultsPostProcessor : For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-09-24T15:52:08.901+03:00  INFO 13728 --- [e-wallet] [  restartedMain] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-09-24T15:52:09.060+03:00  INFO 13728 --- [e-wallet] [  restartedMain] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 133 ms. Found 3 JPA repository interfaces.
+2026-09-24T15:52:10.805+03:00  INFO 13728 --- [e-wallet] [  restartedMain] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 8080 (http)
+2026-09-24T15:52:10.845+03:00  INFO 13728 --- [e-wallet] [  restartedMain] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-09-24T15:52:10.846+03:00  INFO 13728 --- [e-wallet] [  restartedMain] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.26]
+2026-09-24T15:52:10.953+03:00  INFO 13728 --- [e-wallet] [  restartedMain] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 3553 ms
+2026-09-24T15:52:11.144+03:00  WARN 13728 --- [e-wallet] [  restartedMain] ConfigServletWebServerApplicationContext : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'entityManagerFactory' defined in class path resource [org/springframework/boot/hibernate/autoconfigure/HibernateJpaConfiguration.class]: Failed to initialize dependency 'inMemoryDatabaseShutdownExecutor' of LoadTimeWeaverAware bean 'entityManagerFactory': Error creating bean with name 'inMemoryDatabaseShutdownExecutor' defined in class path resource [org/springframework/boot/devtools/autoconfigure/DevToolsDataSourceAutoConfiguration.class]: Unsatisfied dependency expressed through method 'inMemoryDatabaseShutdownExecutor' parameter 0: Error creating bean with name 'dataSource' defined in class path resource [org/springframework/boot/jdbc/autoconfigure/DataSourceConfiguration$Hikari.class]: Failed to instantiate [com.zaxxer.hikari.HikariDataSource]: Factory method 'dataSource' threw exception with message: 'url' must start with "jdbc"
+2026-09-24T15:52:11.151+03:00  INFO 13728 --- [e-wallet] [  restartedMain] o.apache.catalina.core.StandardService   : Stopping service [Tomcat]
+2026-09-24T15:52:11.184+03:00  INFO 13728 --- [e-wallet] [  restartedMain] .s.b.a.l.ConditionEvaluationReportLogger : 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2026-09-24T15:52:11.222+03:00 ERROR 13728 --- [e-wallet] [  restartedMain] o.s.boot.SpringApplication               : Application run failed
+
+org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'entityManagerFactory' defined in class path resource [org/springframework/boot/hibernate/autoconfigure/HibernateJpaConfiguration.class]: Failed to initialize dependency 'inMemoryDatabaseShutdownExecutor' of LoadTimeWeaverAware bean 'entityManagerFactory': Error creating bean with name 'inMemoryDatabaseShutdownExecutor' defined in class path resource [org/springframework/boot/devtools/autoconfigure/DevToolsDataSourceAutoConfiguration.class]: Unsatisfied dependency expressed through method 'inMemoryDatabaseShutdownExecutor' parameter 0: Error creating bean with name 'dataSource' defined in class path resource [org/springframework/boot/jdbc/autoconfigure/DataSourceConfiguration$Hikari.class]: Failed to instantiate [com.zaxxer.hikari.HikariDataSource]: Factory method 'dataSource' threw exception with message: 'url' must start with "jdbc"
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:335) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:203) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:978) ~[spring-context-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:622) ~[spring-context-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:143) ~[spring-boot-web-server-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:756) ~[spring-boot-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:445) ~[spring-boot-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:321) ~[spring-boot-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1365) ~[spring-boot-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1354) ~[spring-boot-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at com.application.e_wallet.EWalletApplication.main(EWalletApplication.java:10) ~[classes/:na]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.boot.devtools.restart.RestartLauncher.run(RestartLauncher.java:52) ~[spring-boot-devtools-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'inMemoryDatabaseShutdownExecutor' defined in class path resource [org/springframework/boot/devtools/autoconfigure/DevToolsDataSourceAutoConfiguration.class]: Unsatisfied dependency expressed through method 'inMemoryDatabaseShutdownExecutor' parameter 0: Error creating bean with name 'dataSource' defined in class path resource [org/springframework/boot/jdbc/autoconfigure/DataSourceConfiguration$Hikari.class]: Failed to instantiate [com.zaxxer.hikari.HikariDataSource]: Factory method 'dataSource' threw exception with message: 'url' must start with "jdbc"
+	at org.springframework.beans.factory.support.ConstructorResolver.createArgumentArray(ConstructorResolver.java:804) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.ConstructorResolver.instantiateUsingFactoryMethod(ConstructorResolver.java:546) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.instantiateUsingFactoryMethod(AbstractAutowireCapableBeanFactory.java:1360) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1192) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:565) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:525) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:346) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:371) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:344) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:198) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:322) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	... 13 common frames omitted
+Caused by: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'dataSource' defined in class path resource [org/springframework/boot/jdbc/autoconfigure/DataSourceConfiguration$Hikari.class]: Failed to instantiate [com.zaxxer.hikari.HikariDataSource]: Factory method 'dataSource' threw exception with message: 'url' must start with "jdbc"
+	at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:657) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.ConstructorResolver.instantiateUsingFactoryMethod(ConstructorResolver.java:645) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.instantiateUsingFactoryMethod(AbstractAutowireCapableBeanFactory.java:1360) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1192) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:565) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:525) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:346) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:371) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:344) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:203) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.resolveBean(DefaultListableBeanFactory.java:1232) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.doResolveDependency(DefaultListableBeanFactory.java:1711) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.resolveDependency(DefaultListableBeanFactory.java:1658) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.ConstructorResolver.resolveAutowiredArgument(ConstructorResolver.java:912) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.ConstructorResolver.createArgumentArray(ConstructorResolver.java:791) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	... 23 common frames omitted
+Caused by: org.springframework.beans.BeanInstantiationException: Failed to instantiate [com.zaxxer.hikari.HikariDataSource]: Factory method 'dataSource' threw exception with message: 'url' must start with "jdbc"
+	at org.springframework.beans.factory.support.SimpleInstantiationStrategy.lambda$instantiate$0(SimpleInstantiationStrategy.java:183) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiateWithFactoryMethod(SimpleInstantiationStrategy.java:72) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:152) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:653) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	... 37 common frames omitted
+Caused by: java.lang.IllegalArgumentException: 'url' must start with "jdbc"
+	at org.springframework.util.Assert.isTrue(Assert.java:117) ~[spring-core-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	at org.springframework.boot.jdbc.DatabaseDriver.fromJdbcUrl(DatabaseDriver.java:316) ~[spring-boot-jdbc-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.jdbc.autoconfigure.DataSourceProperties.findDriverClassName(DataSourceProperties.java:193) ~[spring-boot-jdbc-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.jdbc.autoconfigure.DataSourceProperties.determineDriverClassName(DataSourceProperties.java:177) ~[spring-boot-jdbc-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.jdbc.autoconfigure.PropertiesJdbcConnectionDetails.getDriverClassName(PropertiesJdbcConnectionDetails.java:51) ~[spring-boot-jdbc-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.jdbc.autoconfigure.DataSourceConfiguration.createDataSource(DataSourceConfiguration.java:63) ~[spring-boot-jdbc-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at org.springframework.boot.jdbc.autoconfigure.DataSourceConfiguration$Hikari.dataSource(DataSourceConfiguration.java:128) ~[spring-boot-jdbc-4.2.0-SNAPSHOT.jar:4.2.0-SNAPSHOT]
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[na:na]
+	at org.springframework.beans.factory.support.SimpleInstantiationStrategy.lambda$instantiate$0(SimpleInstantiationStrategy.java:155) ~[spring-beans-7.1.0-SNAPSHOT.jar:7.1.0-SNAPSHOT]
+	... 40 common frames omitted
+
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  12.616 s
+[INFO] Finished at: 2026-09-24T15:52:11+03:00
+[INFO] ------------------------------------------------------------------------
