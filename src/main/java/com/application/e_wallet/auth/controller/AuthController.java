@@ -1,6 +1,8 @@
 package com.application.e_wallet.auth.controller;
 
 import com.application.e_wallet.auth.dto.CustomerRegistrationRequest;
+import com.application.e_wallet.auth.dto.LoginRequest;
+import com.application.e_wallet.auth.dto.LoginResponse;
 import com.application.e_wallet.auth.dto.RegistrationResponse;
 import com.application.e_wallet.auth.service.AuthService;
 import com.application.e_wallet.common.dto.ApiResponse;
@@ -36,6 +38,22 @@ public class AuthController {
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
+                .body(body);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request){
+        LoginResponse response = authService.login(request);
+
+        ApiResponse<LoginResponse> body = ApiResponse.<LoginResponse>builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.OK.value())
+                .message("Login successful")
+                .data(response)
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.OK)
                 .body(body);
     }
 }

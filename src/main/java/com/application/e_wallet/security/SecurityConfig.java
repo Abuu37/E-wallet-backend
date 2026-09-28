@@ -29,6 +29,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/error",
                                 "/api/v1/auth/register",
+                                "/api/v1/auth/login",
                                 "/api/v1/otp/verify",
                                 "/api/v1/otp/resend"
                         ).permitAll()

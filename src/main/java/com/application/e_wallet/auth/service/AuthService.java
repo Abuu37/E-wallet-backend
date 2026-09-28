@@ -1,13 +1,18 @@
 package com.application.e_wallet.auth.service;
 
 import com.application.e_wallet.auth.dto.CustomerRegistrationRequest;
+import com.application.e_wallet.auth.dto.LoginRequest;
+import com.application.e_wallet.auth.dto.LoginResponse;
 import com.application.e_wallet.auth.dto.RegistrationResponse;
 import com.application.e_wallet.common.event.UserRegisteredEvent;
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.role.repository.RoleRepository;
+import com.application.e_wallet.security.jwt.JwtProperties;
+import com.application.e_wallet.security.jwt.JwtService;
 import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.user.entity.UserStatus;
 import com.application.e_wallet.user.repository.UserRepository;
+import com.application.e_wallet.common.exception.AuthenticationException;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +29,8 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final ApplicationEventPublisher eventPublisher;
+    private final JwtService jwtService;
+    private final JwtProperties jwtProperties;
 
     @Transactional
     public RegistrationResponse registerCustomer(CustomerRegistrationRequest request){
@@ -65,6 +72,51 @@ public class AuthService {
                 .userId(savedUser.getId())
                 .message("Customer registered successfully. Verification code has been sent to your email.")
                 .status(savedUser.getStatus())
+                .build();
+    }
+
+    @Transactional
+    public LoginResponse login(LoginRequest request) {
+
+        String email = request.getEmail()
+                .trim()
+                .toLowerCase();
+
+        UserEntity user = userRepository
+                .findByEmail(email)
+                .orElseThrow(() ->
+                        new AuthenticationException(
+                                "Invalid email or password"
+                        ));
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new AuthenticationException(
+                    "Account is not active"
+            );
+        }
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw new AuthenticationException(
+                    "Invalid email or password"
+            );
+        }
+
+        String accessToken = jwtService.generateAccessToken(
+                user.getId(),
+                user.getEmail()
+        );
+
+        String refreshToken = jwtService.generateRefreshToken(
+                user.getId(),
+                user.getEmail()
+        );
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .accessTokenExpiresIn(jwtProperties.getAccessTokenExpiration())
+                .refreshTokenExpiresIn(jwtProperties.getRefreshTokenExpiration())
                 .build();
     }
 }
