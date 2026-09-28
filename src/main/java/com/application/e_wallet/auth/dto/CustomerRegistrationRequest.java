@@ -20,12 +20,24 @@ public class CustomerRegistrationRequest {
 
     @NotBlank(message = "First name is required")
     @Size(min = 1, max = 100, message = "First name must be between 1 and 100 characters")
+    @Pattern(
+            regexp = "^[\\p{L}\\s'-]+$",
+            message = "First name can only contain letters, spaces, hyphens, and apostrophes"
+    )
     private String firstName;
 
-    @Size(min = 1, max = 100, message = "Middle name cannot exceed 100 characters")
+    @Size(min = 1, max = 100, message = "Middle name must be between 1 and 100 characters")
+    @Pattern(
+            regexp = "^[\\p{L}\\s'-]+$",
+            message = "Middle name can only contain letters, spaces, hyphens, and apostrophes"
+    )
     private String middleName;
 
     @NotBlank(message = "Last name is required")
+    @Pattern(
+            regexp = "^[\\p{L}\\s'-]+$",
+            message = "Last name can only contain letters, spaces, hyphens, and apostrophes"
+    )
     @Size(min = 1, max = 100, message = "Last name must be between 1 and 100 characters")
     private String lastName;
 

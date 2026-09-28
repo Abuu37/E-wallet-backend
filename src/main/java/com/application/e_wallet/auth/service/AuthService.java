@@ -2,6 +2,7 @@ package com.application.e_wallet.auth.service;
 
 import com.application.e_wallet.auth.dto.CustomerRegistrationRequest;
 import com.application.e_wallet.auth.dto.RegistrationResponse;
+import com.application.e_wallet.common.event.UserRegisteredEvent;
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.role.repository.RoleRepository;
 import com.application.e_wallet.user.entity.UserEntity;
@@ -10,6 +11,7 @@ import com.application.e_wallet.user.repository.UserRepository;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +23,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public RegistrationResponse registerCustomer(CustomerRegistrationRequest request){
@@ -56,9 +59,11 @@ public class AuthService {
 
         UserEntity savedUser = userRepository.save(user);
 
+        eventPublisher.publishEvent(new UserRegisteredEvent(savedUser.getId(), savedUser.getEmail()));
+
         return RegistrationResponse.builder()
                 .userId(savedUser.getId())
-                .message("Customer registered successfully")
+                .message("Customer registered successfully. Verification code has been sent to your email.")
                 .status(savedUser.getStatus())
                 .build();
     }

@@ -26,9 +26,15 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                         )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/error", "/api/v1/auth/**").permitAll()
-                        // TODO: add the JWT filter that populates the Authentication
-                        // for STATELESS requests once login is implemented.
+                        .requestMatchers(
+                                "/error",
+                                "/api/v1/auth/register",
+                                "/api/v1/otp/verify",
+                                "/api/v1/otp/resend"
+                        ).permitAll()
+                        // Any new endpoint added under /api/v1/auth/** or /api/v1/otp/**
+                        // is protected by default — add it above explicitly only if it
+                        // must be public.
                         .anyRequest().authenticated()
                         );
         return http.build();

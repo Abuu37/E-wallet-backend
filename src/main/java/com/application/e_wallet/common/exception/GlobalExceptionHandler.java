@@ -38,6 +38,29 @@ public class GlobalExceptionHandler {
                 .body(errorResponse);
     }
 
+    //============ Bad Request Handler =============
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ErrorResponse> handleBadRequest(
+            BadRequestException exception,
+            HttpServletRequest request
+    ) {
+
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .message(exception.getMessage())
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity
+                .status(status)
+                .body(errorResponse);
+    }
+
     //============ Validation Field Error Handler =============
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
