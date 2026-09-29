@@ -20,6 +20,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.stream.Collectors;
+
 
 @Service
 @RequiredArgsConstructor
@@ -101,9 +103,14 @@ public class AuthService {
             );
         }
 
+        String roles = user.getRoles().stream()
+                .map(RoleEntity::getName)
+                .collect(Collectors.joining(","));
+
         String accessToken = jwtService.generateAccessToken(
                 user.getId(),
-                user.getEmail()
+                user.getEmail(),
+                roles
         );
 
         String refreshToken = jwtService.generateRefreshToken(
