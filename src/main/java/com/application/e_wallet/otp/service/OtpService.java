@@ -1,5 +1,7 @@
 package com.application.e_wallet.otp.service;
 
+import com.application.e_wallet.customer.entity.CustomerEntity;
+import com.application.e_wallet.customer.service.CustomerService;
 import com.application.e_wallet.otp.config.OtpProperties;
 import com.application.e_wallet.otp.entity.OtpVerificationEntity;
 import com.application.e_wallet.otp.repository.OtpVerificationRepository;
@@ -7,6 +9,7 @@ import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.user.entity.UserStatus;
 import com.application.e_wallet.user.repository.UserRepository;
+import com.application.e_wallet.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,6 +29,8 @@ public class OtpService {
     private final PasswordEncoder passwordEncoder;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final CustomerService  customerService;
+    private final WalletService walletService;
 
     //============ Generate Otp =============== //
     @Transactional
@@ -138,6 +143,11 @@ public class OtpService {
         otpVerificationRepository.save(verification);
 
         user.setStatus(UserStatus.ACTIVE);
+
+        userRepository.save(user);
+
+        CustomerEntity customer = customerService.activateCustomer(user.getId());
+        walletService.createWallet(customer);
     }
 
 }

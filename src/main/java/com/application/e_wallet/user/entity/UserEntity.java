@@ -2,13 +2,18 @@ package com.application.e_wallet.user.entity;
 
 import com.application.e_wallet.role.entity.RoleEntity;
 import jakarta.persistence.*;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import lombok.*;
+import org.jspecify.annotations.Nullable;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
 
 import java.time.Instant;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
+@Slf4j
 @Entity
 @Table(
         name = "users",
@@ -22,7 +27,7 @@ import java.util.UUID;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserEntity {
+public class UserEntity implements UserDetails {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -78,6 +83,31 @@ public class UserEntity {
     @PreUpdate
     protected void onUpdate() {
         this.updatedAt = Instant.now();
+    }
+
+    @Override
+    public@NonNull Collection<? extends GrantedAuthority> getAuthorities() {
+        Set<GrantedAuthority> authorities = new HashSet<>();
+        for (RoleEntity role : this.roles) {
+            // 1. Add the Role itself (e.g., ROLE_CUSTOMER)
+            log.info("Role: {}", role);
+            log.info("Permissions: {}", role.getPermissions());
+            authorities.add(new SimpleGrantedAuthority(role.getName()));
+            // 2. Add all associated Permissions (e.g., VENUE_READ, RIDE_REQUEST)
+            role.getPermissions().forEach(permission -> authorities
+                    .add(new SimpleGrantedAuthority(permission.getName())));
+        }
+        return authorities;
+    }
+
+    @Override
+    public @Nullable String getPassword() {
+        return passwordHash;
+    }
+
+    @Override
+    public @NonNull String getUsername() {
+        return id.toString();
     }
 
 }

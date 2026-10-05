@@ -5,6 +5,7 @@ import com.application.e_wallet.auth.dto.LoginRequest;
 import com.application.e_wallet.auth.dto.LoginResponse;
 import com.application.e_wallet.auth.dto.RegistrationResponse;
 import com.application.e_wallet.common.event.UserRegisteredEvent;
+import com.application.e_wallet.customer.service.CustomerService;
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.role.repository.RoleRepository;
 import com.application.e_wallet.security.jwt.JwtProperties;
@@ -14,6 +15,7 @@ import com.application.e_wallet.user.entity.UserStatus;
 import com.application.e_wallet.user.repository.UserRepository;
 import com.application.e_wallet.common.exception.AuthenticationException;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
+import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -33,6 +35,8 @@ public class AuthService {
     private final ApplicationEventPublisher eventPublisher;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final CustomerService customerService;
+    private final PhoneNumberNormalizer phoneNumberNormalizer;
 
     @Transactional
     public RegistrationResponse registerCustomer(CustomerRegistrationRequest request){
@@ -41,7 +45,9 @@ public class AuthService {
             throw new DuplicationResourceException("Email already exists");
         }
 
-        if (userRepository.existsByPhone(request.getPhone())) {
+        String normalizedPhone = phoneNumberNormalizer.normalize(request.getPhone());
+
+        if (userRepository.existsByPhone(normalizedPhone)) {
             throw new DuplicationResourceException("Phone already exists");
         }
 
@@ -59,14 +65,16 @@ public class AuthService {
                 .middleName(middleName)
                 .lastName(request.getLastName().trim())
                 .email(request.getEmail().trim().toLowerCase())
-                .phone(request.getPhone().trim())
+                .phone(normalizedPhone)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .status(UserStatus.PENDING)
                 .build();
 
         user.getRoles().add(customerRole);
 
-        UserEntity savedUser = userRepository.save(user);
+        UserEntity savedUser = userRepository.save(user);  //======== user save in database ======
+
+        customerService.createCustomer(savedUser); //=== Customer account  created ====
 
         eventPublisher.publishEvent(new UserRegisteredEvent(savedUser.getId(), savedUser.getEmail()));
 
@@ -103,20 +111,8 @@ public class AuthService {
             );
         }
 
-        String roles = user.getRoles().stream()
-                .map(RoleEntity::getName)
-                .collect(Collectors.joining(","));
-
-        String accessToken = jwtService.generateAccessToken(
-                user.getId(),
-                user.getEmail(),
-                roles
-        );
-
-        String refreshToken = jwtService.generateRefreshToken(
-                user.getId(),
-                user.getEmail()
-        );
+        String accessToken = jwtService.generateAccessToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
 
         return LoginResponse.builder()
                 .accessToken(accessToken)

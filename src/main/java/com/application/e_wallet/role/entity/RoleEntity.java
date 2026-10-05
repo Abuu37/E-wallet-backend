@@ -64,4 +64,15 @@ public class RoleEntity {
     protected void onUpdate() {
         this.updatedAt = Instant.now();
     }
+
+    @Override
+    public String toString() {
+        return "RoleEntity{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", description='" + description + '\'' +
+                ", createdAt=" + createdAt +
+                ", updatedAt=" + updatedAt +
+                '}';
+    }
 }

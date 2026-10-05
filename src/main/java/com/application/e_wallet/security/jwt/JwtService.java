@@ -1,9 +1,13 @@
 package com.application.e_wallet.security.jwt;
 
+import com.application.e_wallet.role.entity.RoleEntity;
+import com.application.e_wallet.user.entity.UserEntity;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -12,6 +16,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -29,25 +34,12 @@ public class JwtService {
         );
     }
 
-    public String generateAccessToken(UUID userId, String email, String roles) {
-        return generateToken(
-                userId,
-                email,
-                roles,
-                ACCESS_TOKEN_TYPE,
-                jwtProperties.getAccessTokenExpiration()
-                );
+    public String generateAccessToken(UserEntity user) {
+        return generateToken(user, ACCESS_TOKEN_TYPE, jwtProperties.getAccessTokenExpiration());
     }
 
-    public String generateRefreshToken(UUID userId, String email) {
-        return generateToken(
-                userId,
-                email,
-                null,
-                REFRESH_TOKEN_TYPE,
-                jwtProperties.getRefreshTokenExpiration()
-
-                );
+    public String generateRefreshToken(UserEntity user) {
+        return generateToken(user, REFRESH_TOKEN_TYPE, jwtProperties.getRefreshTokenExpiration());
     }
 
     // Checks if a specific token string is mathematically valid, not expired, and untampered with (Validation).
@@ -75,28 +67,28 @@ public class JwtService {
         return parseToken(token).get("email", String.class);
     }
 
-    private String generateToken(UUID userId, String email, String roles, String tokenType, long expiration) {
+    private String generateToken(UserEntity user, String tokenType, long expirationMillis) {
 
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + expiration);
+        Date expiry = new Date(now.getTime() + expirationMillis);
+
+        String roles = user.getRoles().stream()
+                .map(RoleEntity::getName)
+                .collect(Collectors.joining(","));
 
         Map<String, Object> claims = new HashMap<>();
-        claims.put("email", email);
         claims.put("type", tokenType);
-        if (roles != null) {
-            claims.put("roles", roles);
-        }
+        claims.put("email", user.getEmail());
+        claims.put("roles", roles);
 
         return Jwts.builder()
-                .subject(userId.toString())
+                .subject(user.getId().toString())
                 .claims(claims)
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(getSigningKey())
                 .compact();
     }
-
-
 
 
 }

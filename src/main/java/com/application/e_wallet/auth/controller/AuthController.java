@@ -24,7 +24,7 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/register")
+    @PostMapping("/customer-registration")
     public ResponseEntity<ApiResponse<RegistrationResponse>> registerCustomer(@Valid @RequestBody CustomerRegistrationRequest request){
 
         RegistrationResponse response = authService.registerCustomer(request);
