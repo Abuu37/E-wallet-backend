@@ -47,4 +47,33 @@ public class EmailService {
 
         }
     }
+
+    @Async
+    public void sendPasswordResetOtp(String to, String otp, int expirationMinutes) {
+
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromAddress);
+            message.setTo(to);
+            message.setSubject("Reset Your E-wallet Password");
+            message.setText(
+                    "Hello,\n\n" +
+                            "We received a request to reset your E-Wallet account password.\n\n" +
+                            "Use the code below to reset your password:\n\n" +
+                            "Reset Code: " + otp + "\n\n" +
+                            "This code will expire in " + expirationMinutes + " minutes.\n\n" +
+                            "If you did not request a password reset, please ignore this email and your password will remain unchanged.\n\n" +
+                            "Please do not share this code with anyone. " +
+                            "Regards,\n" +
+                            "E-Wallet Team"
+            );
+            mailSender.send(message);
+            log.info("Password reset email successfully sent to {}", to);
+
+        } catch (Exception e) {
+
+            log.error("Failed to send password reset email to {}. Reason: {}", to, e.getMessage());
+
+        }
+    }
 }

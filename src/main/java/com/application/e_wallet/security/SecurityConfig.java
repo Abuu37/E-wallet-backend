@@ -38,6 +38,8 @@ public class SecurityConfig {
                                 "/error",
                                 "/api/v1/auth/customer-registration",
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password",
                                 "/api/v1/otp/verify",
                                 "/api/v1/otp/resend"
                         ).permitAll()
