@@ -1,5 +1,6 @@
 package com.application.e_wallet.security.jwt;
 
+import com.application.e_wallet.permission.entity.PermissionEntity;
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.user.entity.UserEntity;
 import io.jsonwebtoken.Claims;
@@ -14,6 +15,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -59,6 +61,13 @@ public class JwtService {
         return parseToken(token).get("roles", String.class);
     }
 
+    public List<String> extractPermissions(String token) {
+        List<?> permissions = parseToken(token).get("permissions", List.class);
+        return permissions == null
+                ? List.of()
+                : permissions.stream().map(String::valueOf).toList();
+    }
+
     public String extractTokenType(String token) {
         return parseToken(token).get("type", String.class);
     }
@@ -76,10 +85,17 @@ public class JwtService {
                 .map(RoleEntity::getName)
                 .collect(Collectors.joining(","));
 
+        List<String> permissions = user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .map(PermissionEntity::getName)
+                .distinct()
+                .toList();
+
         Map<String, Object> claims = new HashMap<>();
         claims.put("type", tokenType);
         claims.put("email", user.getEmail());
         claims.put("roles", roles);
+        claims.put("permissions", permissions);
 
         return Jwts.builder()
                 .subject(user.getId().toString())

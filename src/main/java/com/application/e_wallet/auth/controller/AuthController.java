@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -56,6 +57,7 @@ public class AuthController {
     }
 
     @GetMapping("/status")
+    @PreAuthorize("hasAuthority('CUSTOMER_VIEW')")
     public ResponseEntity<ApiResponse<AccountStatusResponse>> accountStatus(Authentication authentication){
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         AccountStatusResponse response = authService.getAccountStatus(principal.email());
@@ -113,6 +115,22 @@ public class AuthController {
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
                 .message("Password reset successfully")
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(body);
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@Valid @RequestBody LogoutRequest request, Authentication authentication){
+        AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
+        authService.logout(principal.email(), request.getRefreshToken());
+
+        ApiResponse<Void> body = ApiResponse.<Void>builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.OK.value())
+                .message("Logged out successfully")
                 .build();
 
         return ResponseEntity

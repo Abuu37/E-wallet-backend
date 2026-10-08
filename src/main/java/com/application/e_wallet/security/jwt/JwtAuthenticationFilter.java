@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 // Intercepts the request, extracts the token from the header, asks the
 // validation tool to check it, and logs the user into Spring Security.
@@ -52,12 +53,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         UUID userId = jwtService.extractUserId(jwt);
                         String email = jwtService.extractEmail(jwt);
                         String rolesClaim = jwtService.extractRoles(jwt);
+                        List<String> permissionsClaim = jwtService.extractPermissions(jwt);
 
-                        List<GrantedAuthority> authorities = (rolesClaim == null || rolesClaim.isBlank())
-                                ? List.of()
-                                : Arrays.stream(rolesClaim.split(","))
-                                        .<GrantedAuthority>map(role -> new SimpleGrantedAuthority("ROLE_" + role))
-                                        .toList();
+                        List<GrantedAuthority> authorities = Stream.concat(
+                                splitClaim(rolesClaim).map(role -> "ROLE_" + role),
+                                permissionsClaim.stream()
+                        ).<GrantedAuthority>map(SimpleGrantedAuthority::new).toList();
 
                         // 3. If validation passes, the FILTER logs the user into Spring Security
                         AuthenticatedUser principal = new AuthenticatedUser(userId, email);
@@ -79,6 +80,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 4. Let the request continue to the Controller
         filterChain.doFilter(request, response);
+    }
+
+    private Stream<String> splitClaim(String claim) {
+        return (claim == null || claim.isBlank())
+                ? Stream.empty()
+                : Arrays.stream(claim.split(","));
     }
 
 }

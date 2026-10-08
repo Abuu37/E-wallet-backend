@@ -1,8 +1,11 @@
 package com.application.e_wallet.auth.service;
 
 import com.application.e_wallet.auth.dto.*;
+import com.application.e_wallet.auth.entity.UserSessionEntity;
+import com.application.e_wallet.auth.repository.UserSessionRepository;
 import com.application.e_wallet.common.event.UserRegisteredEvent;
 import com.application.e_wallet.customer.service.CustomerService;
+import com.application.e_wallet.permission.entity.PermissionEntity;
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.role.repository.RoleRepository;
 import com.application.e_wallet.security.jwt.JwtProperties;
@@ -19,6 +22,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -32,6 +39,8 @@ public class AuthService {
     private final CustomerService customerService;
     private final PhoneNumberNormalizer phoneNumberNormalizer;
     private final AccountStatusService accountStatusService;
+    private final UserSessionRepository userSessionRepository;
+    private final RefreshTokenHashService refreshTokenHashService;
 
     @Transactional
     public RegistrationResponse registerCustomer(CustomerRegistrationRequest request){
@@ -108,10 +117,31 @@ public class AuthService {
         String accessToken = jwtService.generateAccessToken(user);
         String refreshToken = jwtService.generateRefreshToken(user);
 
+        UserSessionEntity session = UserSessionEntity.builder()
+                .user(user)
+                .refreshTokenHash(refreshTokenHashService.hash(refreshToken))
+                .expiresAt(OffsetDateTime.now().plus(Duration.ofMillis(jwtProperties.getRefreshTokenExpiration())))
+                .revoked(false)
+                .build();
+
+        userSessionRepository.save(session);
+
+        List<String> roles = user.getRoles().stream()
+                .map(RoleEntity::getName)
+                .toList();
+
+        List<String> permissions = user.getRoles().stream()
+                .flatMap(role -> role.getPermissions().stream())
+                .map(PermissionEntity::getName)
+                .distinct()
+                .toList();
+
         return LoginResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
                 .tokenType("Bearer")
+                .roles(roles)
+                .permissions(permissions)
                 .accessTokenExpiresIn(jwtProperties.getAccessTokenExpiration())
                 .refreshTokenExpiresIn(jwtProperties.getRefreshTokenExpiration())
                 .build();
@@ -186,5 +216,37 @@ public class AuthService {
 
         userRepository.save(userEntity);
 
+        // Password changed — kill every refresh session so a stolen token
+        // can't keep issuing new access tokens.
+        userSessionRepository.deleteAllByUserId(userEntity.getId());
     }
+
+    @Transactional
+   public void logout(String email, String refreshToken){
+
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new AuthenticationException("User account not found"));
+
+        String tokenHash = refreshTokenHashService.hash(refreshToken);
+
+        UserSessionEntity session = userSessionRepository
+                .findByRefreshTokenHash(tokenHash)
+                .orElseThrow(() ->
+                        new AuthenticationException("Invalid refresh token"));
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new AuthenticationException("Invalid refresh token");
+        }
+
+        if (session.isRevoked()) {
+            throw new AuthenticationException("Session is revoked");
+        }
+
+        session.setRevoked(true);
+        session.setRevokedAt(OffsetDateTime.now());
+
+        userSessionRepository.save(session);
+
+   }
 }

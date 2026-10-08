@@ -1,5 +1,6 @@
 package com.application.e_wallet.security;
 
+import com.application.e_wallet.security.jwt.JwtAccessDeniedHandler;
 import com.application.e_wallet.security.jwt.JwtAuthenticationEntryPoint;
 import com.application.e_wallet.security.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+    private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -48,7 +50,9 @@ public class SecurityConfig {
                         // must be public.
                         .anyRequest().authenticated()
                         )
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                        .accessDeniedHandler(jwtAccessDeniedHandler))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
