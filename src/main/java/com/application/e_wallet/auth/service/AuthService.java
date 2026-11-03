@@ -4,6 +4,7 @@ import com.application.e_wallet.auth.dto.*;
 import com.application.e_wallet.auth.entity.UserSessionEntity;
 import com.application.e_wallet.auth.repository.UserSessionRepository;
 import com.application.e_wallet.common.event.UserRegisteredEvent;
+import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.service.CustomerService;
 import com.application.e_wallet.permission.entity.PermissionEntity;
 import com.application.e_wallet.role.entity.RoleEntity;
@@ -14,8 +15,13 @@ import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.user.entity.UserStatus;
 import com.application.e_wallet.user.repository.UserRepository;
 import com.application.e_wallet.common.exception.AuthenticationException;
+import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
+import com.application.e_wallet.otp.entity.OtpVerificationEntity;
+import com.application.e_wallet.otp.repository.OtpVerificationRepository;
+import com.application.e_wallet.otp.service.EmailService;
+import com.application.e_wallet.wallet.service.WalletService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -23,7 +29,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -32,7 +40,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordEncoder pinEncoder;
     private final ApplicationEventPublisher eventPublisher;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
@@ -41,6 +49,12 @@ public class AuthService {
     private final AccountStatusService accountStatusService;
     private final UserSessionRepository userSessionRepository;
     private final RefreshTokenHashService refreshTokenHashService;
+    private final WalletService walletService;
+    private final OtpVerificationRepository otpVerificationRepository;
+    private final EmailService emailService;
+
+    // How long after OTP verification the user has to call set-pin before they must re-verify.
+    private static final long PIN_SETUP_WINDOW_MINUTES = 15;
 
     @Transactional
     public RegistrationResponse registerCustomer(CustomerRegistrationRequest request){
@@ -70,7 +84,6 @@ public class AuthService {
                 .lastName(request.getLastName().trim())
                 .email(request.getEmail().trim().toLowerCase())
                 .phone(normalizedPhone)
-                .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .status(UserStatus.PENDING)
                 .build();
 
@@ -90,27 +103,76 @@ public class AuthService {
     }
 
     /**
+     * SET PIN — completes registration once the email has been OTP-verified.
+     */
+    @Transactional(dontRollbackOn = BadRequestException.class)
+    public void setPin(SetPinRequest request) {
+
+        String email = request.getEmail().trim().toLowerCase();
+        String genericErrorMessage = "PIN cannot be set for this account.";
+
+        UserEntity user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new BadRequestException(
+                                genericErrorMessage
+                        ));
+
+        if (user.getStatus() != UserStatus.AWAITING_PIN) {
+            throw new BadRequestException(
+                    genericErrorMessage
+            );
+        }
+
+        OtpVerificationEntity verification = otpVerificationRepository.findByUser(user)
+                .orElseThrow(() ->
+                        new BadRequestException(
+                                genericErrorMessage
+                        ));
+
+        boolean windowExpired = verification.getVerifiedAt() == null
+                || verification.getVerifiedAt().isBefore(Instant.now().minus(PIN_SETUP_WINDOW_MINUTES, ChronoUnit.MINUTES));
+
+        if (windowExpired) {
+            // Self-healing: drop back to PENDING so resend-otp is reachable again.
+            user.setStatus(UserStatus.PENDING);
+            userRepository.save(user);
+
+            throw new BadRequestException(
+                    "PIN setup has expired. Please request a new verification code."
+            );
+        }
+
+        user.setPinHash(pinEncoder.encode(request.getPin()));
+        user.setStatus(UserStatus.ACTIVE);
+
+        userRepository.save(user);
+
+        CustomerEntity customer = customerService.activateCustomer(user.getId());
+        walletService.createWallet(customer);
+
+        emailService.sendPinSetConfirmation(user.getEmail());
+    }
+
+    /**
      * LOGIN RESPONSE
      */
     @Transactional
     public LoginResponse login(LoginRequest request) {
 
-        String email = request.getEmail()
-                .trim()
-                .toLowerCase();
+        String normalizedPhone = phoneNumberNormalizer.normalize(request.getPhone());
 
         UserEntity user = userRepository
-                .findByEmail(email)
+                .findByPhone(normalizedPhone)
                 .orElseThrow(() ->
                         new AuthenticationException(
-                                "Invalid email or password"
+                                "Invalid credentials"
                         ));
 
         accountStatusService.validateLoginStatus(user); // check account status
 
-        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+        if (!pinEncoder.matches(request.getPin(), user.getPinHash())) {
             throw new AuthenticationException(
-                    "Invalid email or password"
+                    "Invalid credentials"
             );
         }
 
@@ -175,6 +237,7 @@ public class AuthService {
 
             case ACTIVE -> "Account is active";
             case PENDING -> "Account is pending";
+            case AWAITING_PIN -> "Account is awaiting PIN setup";
             case SUSPENDED -> "Account is suspended";
             case BLOCKED -> "Account is blocked";
             case CLOSED -> "Account is closed";
@@ -182,12 +245,11 @@ public class AuthService {
         };
     }
 
-
     /**
-     * CHANGE PASSWORD RESPONSE
+     * CHANGE PIN RESPONSE
      */
     @Transactional
-    public void changePassword(String email, ChangePasswordRequest request){
+    public void changePin(String email, ChangePinRequest request){
 
         UserEntity userEntity = userRepository.findByEmail(email)
                 .orElseThrow(() ->
@@ -198,25 +260,25 @@ public class AuthService {
 
         accountStatusService.validateLoginStatus(userEntity);
 
-        if (!passwordEncoder.matches( request.getCurrentPassword(), userEntity.getPassword())) {
+        if (!pinEncoder.matches( request.getCurrentPin(), userEntity.getPassword())) {
             throw new AuthenticationException(
-                    "Current password is incorrect"
+                    "Current PIN is incorrect"
             );
         }
 
-        if (passwordEncoder.matches( request.getNewPassword(), userEntity.getPasswordHash())) {
+        if (pinEncoder.matches( request.getNewPin(), userEntity.getPinHash())) {
             throw new AuthenticationException(
-                    "New password must be different from current password"
+                    "New PIN must be different from current PIN"
             );
         }
 
-        userEntity.setPasswordHash(
-                passwordEncoder.encode(request.getNewPassword())
+        userEntity.setPinHash(
+                pinEncoder.encode(request.getNewPin())
         );
 
         userRepository.save(userEntity);
 
-        // Password changed — kill every refresh session so a stolen token
+        // PIN changed — kill every refresh session so a stolen token
         // can't keep issuing new access tokens.
         userSessionRepository.deleteAllByUserId(userEntity.getId());
     }

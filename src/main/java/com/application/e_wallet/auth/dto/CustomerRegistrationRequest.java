@@ -1,6 +1,5 @@
 package com.application.e_wallet.auth.dto;
 
-import com.application.e_wallet.common.annotion.PasswordMatches;
 import com.application.e_wallet.common.annotion.ValidPhoneNumber;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -15,7 +14,6 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@PasswordMatches
 public class CustomerRegistrationRequest {
 
     @NotBlank(message = "First name is required")
@@ -49,15 +47,4 @@ public class CustomerRegistrationRequest {
     @NotBlank(message = "Phone number is required")
     @ValidPhoneNumber
     private String phone;
-
-    @NotBlank(message = "Password is required")
-    @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
-    @Pattern(
-            regexp = "^(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
-            message = "Password must contain at least one uppercase letter, one number, and one special character"
-    )
-    private String password;
-
-    @NotBlank(message = "Confirm password is required")
-    private String confirmPassword;
 }

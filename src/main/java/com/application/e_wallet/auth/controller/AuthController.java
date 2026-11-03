@@ -2,9 +2,12 @@ package com.application.e_wallet.auth.controller;
 
 import com.application.e_wallet.auth.dto.*;
 import com.application.e_wallet.auth.service.AuthService;
-import com.application.e_wallet.auth.service.PasswordResetService;
+import com.application.e_wallet.auth.service.PinResetService;
+import com.application.e_wallet.auth.service.RateLimitingService;
 import com.application.e_wallet.common.dto.ApiResponse;
+import com.application.e_wallet.common.exception.TooManyRequestsException;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,10 +24,18 @@ import java.time.Instant;
 public class AuthController {
 
     private final AuthService authService;
-    private final PasswordResetService passwordResetService;
+    private final PinResetService pinResetService;
+    private final RateLimitingService rateLimitingService;
+
 
     @PostMapping("/customer-registration")
-    public ResponseEntity<ApiResponse<RegistrationResponse>> registerCustomer(@Valid @RequestBody CustomerRegistrationRequest request){
+    public ResponseEntity<ApiResponse<RegistrationResponse>> registerCustomer(@Valid @RequestBody CustomerRegistrationRequest request, HttpServletRequest httpRequest){
+
+        String ip = httpRequest.getRemoteAddr();
+
+        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.getEmail())) {
+            throw new TooManyRequestsException("Too many registration attempts. Please try again later.");
+        }
 
         RegistrationResponse response = authService.registerCustomer(request);
 
@@ -40,8 +51,37 @@ public class AuthController {
                 .body(body);
     }
 
+    @PostMapping("/set-pin")
+    public ResponseEntity<ApiResponse<Void>> setPin(@Valid @RequestBody SetPinRequest request, HttpServletRequest httpRequest){
+
+        String ip = httpRequest.getRemoteAddr();
+
+        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.getEmail())) {
+            throw new TooManyRequestsException("Too many attempts. Please try again later.");
+        }
+
+        authService.setPin(request);
+
+        ApiResponse<Void> body = ApiResponse.<Void>builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.OK.value())
+                .message("PIN set successfully. You can now log in.")
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(body);
+    }
+
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request){
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest){
+
+        String ip = httpRequest.getRemoteAddr();
+
+        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.getPhone())) {
+            throw new TooManyRequestsException("Too many login attempts. Please try again later.");
+        }
+
         LoginResponse response = authService.login(request);
 
         ApiResponse<LoginResponse> body = ApiResponse.<LoginResponse>builder()
@@ -74,15 +114,22 @@ public class AuthController {
                 .body(body);
     }
 
-    @PostMapping("/change-password")
-    public ResponseEntity<ApiResponse<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest request, Authentication authentication){
+    @PostMapping("/change-pin")
+    public ResponseEntity<ApiResponse<Void>> changePin(@Valid @RequestBody ChangePinRequest request, Authentication authentication, HttpServletRequest httpRequest){
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        authService.changePassword(principal.email(), request);
+
+        String ip = httpRequest.getRemoteAddr();
+
+        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(principal.email())) {
+            throw new TooManyRequestsException("Too many attempts. Please try again later.");
+        }
+
+        authService.changePin(principal.email(), request);
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Password changed successfully")
+                .message("PIN changed successfully")
                 .build();
 
         return ResponseEntity
@@ -90,14 +137,21 @@ public class AuthController {
                 .body(body);
     }
 
-    @PostMapping("/forgot-password")
-    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request){
-        passwordResetService.forgotPassword(request.email());
+    @PostMapping("/forgot-pin")
+    public ResponseEntity<ApiResponse<Void>> forgotPin(@Valid @RequestBody ForgotPinRequest request, HttpServletRequest httpRequest){
+
+        String ip = httpRequest.getRemoteAddr();
+
+        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.email())) {
+            throw new TooManyRequestsException("Too many requests. Please try again later.");
+        }
+
+        pinResetService.forgotPin(request.email());
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("If an account exists for this email, a password reset code has been sent.")
+                .message("If an account exists for this email, a PIN reset code has been sent.")
                 .build();
 
         return ResponseEntity
@@ -105,16 +159,23 @@ public class AuthController {
                 .body(body);
     }
 
-    @PostMapping("/reset-password")
-    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request){
-        passwordResetService.resetPassword(
-                request.email(), request.otp(), request.newPassword()
+    @PostMapping("/reset-pin")
+    public ResponseEntity<ApiResponse<Void>> resetPin(@Valid @RequestBody ResetPinRequest request, HttpServletRequest httpRequest){
+
+        String ip = httpRequest.getRemoteAddr();
+
+        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.email())) {
+            throw new TooManyRequestsException("Too many attempts. Please try again later.");
+        }
+
+        pinResetService.resetPin(
+                request.email(), request.otp(), request.newPin()
         );
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Password reset successfully")
+                .message("PIN reset successfully")
                 .build();
 
         return ResponseEntity

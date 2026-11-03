@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-public record ResetPasswordRequest(
+public record ResetPinRequest(
 
         @NotBlank(message = "Email is required")
         @Email(message = "Invalid email format")
@@ -19,13 +19,12 @@ public record ResetPasswordRequest(
         )
         String otp,
 
-        @NotBlank(message = "New password is required")
-        @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
+        @NotBlank(message = "New PIN is required")
         @Pattern(
-                regexp = "^(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
-                message = "Password must contain at least one uppercase letter, one number, and one special character"
+                regexp = "^\\d{4}$",
+                message = "PIN must be exactly 4 digits"
         )
-        String newPassword
+        String newPin
 
 ) {
 }

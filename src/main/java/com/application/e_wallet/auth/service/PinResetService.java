@@ -1,8 +1,8 @@
 package com.application.e_wallet.auth.service;
 
-import com.application.e_wallet.auth.config.PasswordResetProperties;
-import com.application.e_wallet.auth.entity.PasswordResetTokenEntity;
-import com.application.e_wallet.auth.repository.PasswordResetTokenRepository;
+import com.application.e_wallet.auth.config.PinResetProperties;
+import com.application.e_wallet.auth.entity.PinResetTokenEntity;
+import com.application.e_wallet.auth.repository.PinResetTokenRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.otp.service.EmailService;
 import com.application.e_wallet.otp.service.OtpGenerator;
@@ -20,18 +20,19 @@ import java.util.Optional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PasswordResetService {
+public class PinResetService {
 
     private final UserRepository userRepository;
-    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final PinResetTokenRepository pinResetTokenRepository;
     private final OtpGenerator otpGenerator;
-    private final PasswordResetProperties passwordResetProperties;
-    private final PasswordEncoder passwordEncoder;
+    private final PinResetProperties pinResetProperties;
+    private final PasswordEncoder passwordEncoder; // hashes/verifies the OTP
+    private final PasswordEncoder pinEncoder; // hashes/verifies the PIN
     private final EmailService emailService;
 
     //======== Always called from the controller — never reveals whether the email exists ========
     @Transactional
-    public void forgotPassword(String email) {
+    public void forgotPin(String email) {
 
         String normalizedEmail = email.trim().toLowerCase();
 
@@ -46,11 +47,11 @@ public class PasswordResetService {
 
         UserEntity user = userOptional.get();
 
-        Optional<PasswordResetTokenEntity> existing = passwordResetTokenRepository.findByUser(user);
+        Optional<PinResetTokenEntity> existing = pinResetTokenRepository.findByUser(user);
 
         if (existing.isPresent()) {
             Instant cooldownEnd = existing.get().getCreatedAt()
-                    .plusSeconds(passwordResetProperties.getResendCooldownSeconds());
+                    .plusSeconds(pinResetProperties.getResendCooldownSeconds());
 
             if (cooldownEnd.isAfter(Instant.now())) {
                 // Within cooldown — stay silent instead of signalling
@@ -59,30 +60,30 @@ public class PasswordResetService {
             }
         }
 
-        passwordResetTokenRepository.deleteByUser(user);
+        pinResetTokenRepository.deleteByUser(user);
 
-        String otp = otpGenerator.generate(passwordResetProperties.getLength());
+        String otp = otpGenerator.generate(pinResetProperties.getLength());
 
-        PasswordResetTokenEntity token = PasswordResetTokenEntity.builder()
+        PinResetTokenEntity token = PinResetTokenEntity.builder()
                 .user(user)
                 .otpHash(passwordEncoder.encode(otp))
-                .expiresAt(Instant.now().plusSeconds(passwordResetProperties.getExpirationMinutes() * 60L))
+                .expiresAt(Instant.now().plusSeconds(pinResetProperties.getExpirationMinutes() * 60L))
                 .attempts(0)
-                .maxAttempts(passwordResetProperties.getMaxAttempts())
+                .maxAttempts(pinResetProperties.getMaxAttempts())
                 .used(false)
                 .build();
 
-        passwordResetTokenRepository.save(token);
+        pinResetTokenRepository.save(token);
 
         try {
-            emailService.sendPasswordResetOtp(user.getEmail(), otp, passwordResetProperties.getExpirationMinutes());
+            emailService.sendPinResetOtp(user.getEmail(), otp, pinResetProperties.getExpirationMinutes());
         } catch (Exception exception) {
-            log.error("Failed to send password reset email to {}", user.getEmail(), exception);
+            log.error("Failed to send PIN reset email to {}", user.getEmail(), exception);
         }
     }
 
     @Transactional(noRollbackFor = BadRequestException.class)
-    public void resetPassword(String email, String otp, String newPassword) {
+    public void resetPin(String email, String otp, String newPin) {
 
         String normalizedEmail = email.trim().toLowerCase();
 
@@ -92,7 +93,7 @@ public class PasswordResetService {
                                 "Invalid or expired reset code."
                         ));
 
-        PasswordResetTokenEntity token = passwordResetTokenRepository.findByUser(user)
+        PinResetTokenEntity token = pinResetTokenRepository.findByUser(user)
                 .orElseThrow(() ->
                         new BadRequestException(
                                 "Invalid or expired reset code."
@@ -120,24 +121,24 @@ public class PasswordResetService {
 
             token.setAttempts(token.getAttempts() + 1);
 
-            passwordResetTokenRepository.save(token);
+            pinResetTokenRepository.save(token);
 
             throw new BadRequestException(
                     "Invalid reset code."
             );
         }
 
-        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+        if (pinEncoder.matches(newPin, user.getPinHash())) {
             throw new BadRequestException(
-                    "New password must be different from current password."
+                    "New PIN must be different from current PIN."
             );
         }
 
         token.setUsed(true);
         token.setUsedAt(Instant.now());
-        passwordResetTokenRepository.save(token);
+        pinResetTokenRepository.save(token);
 
-        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setPinHash(pinEncoder.encode(newPin));
         userRepository.save(user);
     }
 }

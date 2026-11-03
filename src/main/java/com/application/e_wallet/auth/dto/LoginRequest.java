@@ -1,8 +1,8 @@
 package com.application.e_wallet.auth.dto;
 
-import jakarta.validation.constraints.Email;
+import com.application.e_wallet.common.annotion.ValidPhoneNumber;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,11 +10,14 @@ import lombok.Setter;
 @Setter
 public class LoginRequest {
 
-    @NotBlank(message = "Email is required")
-    @Size(max = 255, message = "Email cannot exceed 255 characters")
-    @Email(message = "Please provide a valid email address")
-    private String email;
+    @NotBlank(message = "Phone number is required")
+    @ValidPhoneNumber
+    private String phone;
 
-    @NotBlank(message = "Password is required")
-    private String password;
+    @NotBlank(message = "PIN is required")
+    @Pattern(
+            regexp = "^\\d{4}$",
+            message = "PIN must be exactly 4 digits"
+    )
+    private String pin;
 }

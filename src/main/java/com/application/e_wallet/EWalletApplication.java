@@ -15,7 +15,7 @@ public class EWalletApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(EWalletApplication.class, args);
 
-		 log.info("Request destination");
+		 log.info("=============== Request destination ===============");
 	}
 
 }

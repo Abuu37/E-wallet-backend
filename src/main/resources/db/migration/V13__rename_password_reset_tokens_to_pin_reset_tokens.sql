@@ -1,0 +1,5 @@
+ALTER TABLE password_reset_tokens RENAME TO pin_reset_tokens;
+ALTER TABLE pin_reset_tokens RENAME CONSTRAINT uk_password_reset_tokens_user TO uk_pin_reset_tokens_user;
+ALTER TABLE pin_reset_tokens RENAME CONSTRAINT fk_password_reset_tokens_user TO fk_pin_reset_tokens_user;
+ALTER INDEX idx_password_reset_tokens_user_id RENAME TO idx_pin_reset_tokens_user_id;
+ALTER INDEX idx_password_reset_tokens_expires_at RENAME TO idx_pin_reset_tokens_expires_at;

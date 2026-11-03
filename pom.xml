@@ -131,6 +131,19 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Bucket4j Core -->
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j-core</artifactId>
+			<version>8.10.1</version>
+		</dependency>
+
+		<!-- Caffeine Cache for storing the buckets for high performance in-memory rate limiting -->
+		<dependency>
+			<groupId>com.github.ben-manes.caffeine</groupId>
+			<artifactId>caffeine</artifactId>
+		</dependency>
+
 	</dependencies>
 
 	<build>

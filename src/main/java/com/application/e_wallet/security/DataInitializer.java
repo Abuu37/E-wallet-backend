@@ -24,7 +24,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordEncoder pinEncoder;
 
     @Value("${app.initial-admin.first-name}")
     private String firstName;
@@ -64,7 +64,7 @@ public class DataInitializer implements CommandLineRunner {
                 .lastName(lastName)
                 .email(email)
                 .phone(phone)
-                .passwordHash(passwordEncoder.encode(password))
+                .pinHash(pinEncoder.encode(password))
                 .status(UserStatus.ACTIVE)
                 .build();
 

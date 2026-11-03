@@ -25,6 +25,11 @@ public class AccountStatusService {
                         "Account is pending "
                 );
             }
+            case AWAITING_PIN -> {
+                throw new AuthenticationException(
+                        "Account setup is incomplete — please set your PIN"
+                );
+            }
             case SUSPENDED -> {
                 throw new AuthenticationException(
                         "Account is suspended "

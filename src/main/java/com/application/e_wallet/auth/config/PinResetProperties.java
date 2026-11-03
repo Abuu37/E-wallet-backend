@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 @Component
 @Getter
 @Setter
-@ConfigurationProperties(prefix = "password-reset")
-public class PasswordResetProperties {
+@ConfigurationProperties(prefix = "pin-reset")
+public class PinResetProperties {
 
     private int length;
     private int expirationMinutes;

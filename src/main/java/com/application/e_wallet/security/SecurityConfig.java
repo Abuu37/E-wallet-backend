@@ -24,7 +24,7 @@ public class SecurityConfig {
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
+    public PasswordEncoder pinEncoder() {
         return new BCryptPasswordEncoder(12);
     }
 
@@ -39,9 +39,10 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/error",
                                 "/api/v1/auth/customer-registration",
+                                "/api/v1/auth/set-pin",
                                 "/api/v1/auth/login",
-                                "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password",
+                                "/api/v1/auth/forgot-pin",
+                                "/api/v1/auth/reset-pin",
                                 "/api/v1/otp/verify",
                                 "/api/v1/otp/resend"
                         ).permitAll()

@@ -32,7 +32,7 @@ public class OtpController {
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("OTP verification successful")
+                .message("Email verified. Please set your PIN to activate your account.")
                 .build();
 
         return ResponseEntity.ok(body);

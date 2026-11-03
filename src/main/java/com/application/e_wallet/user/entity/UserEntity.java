@@ -48,8 +48,9 @@ public class UserEntity implements UserDetails {
     @Column(nullable = false, unique = true)
     private String phone;
 
-    @Column(name ="password_hash",nullable = false)
-    private String passwordHash;
+    // Null while the account is PENDING/AWAITING_PIN; set once the user completes set-pin.
+    @Column(name ="pin_hash")
+    private String pinHash;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -100,9 +101,10 @@ public class UserEntity implements UserDetails {
         return authorities;
     }
 
+    // Name fixed by the UserDetails contract; backed by the PIN hash.
     @Override
     public @Nullable String getPassword() {
-        return passwordHash;
+        return pinHash;
     }
 
     @Override
