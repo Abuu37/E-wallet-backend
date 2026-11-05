@@ -12,5 +12,4 @@ public class AccountStatusResponse {
 
     private UserStatus status;
     private boolean active;
-    private String message;
 }

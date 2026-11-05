@@ -17,6 +17,5 @@ import java.util.UUID;
 public class RegistrationResponse {
 
     private UUID userId;
-    private String message;
     private UserStatus status;
 }

@@ -76,7 +76,9 @@ public class PinResetService {
         pinResetTokenRepository.save(token);
 
         try {
-            emailService.sendPinResetOtp(user.getEmail(), otp, pinResetProperties.getExpirationMinutes());
+            emailService.sendPinResetOtp(
+                    user.getEmail(), otp, pinResetProperties.getExpirationMinutes()
+            );
         } catch (Exception exception) {
             log.error("Failed to send PIN reset email to {}", user.getEmail(), exception);
         }
@@ -90,7 +92,7 @@ public class PinResetService {
         UserEntity user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() ->
                         new BadRequestException(
-                                "Invalid or expired reset code."
+                                "The email not found."
                         ));
 
         PinResetTokenEntity token = pinResetTokenRepository.findByUser(user)
@@ -137,7 +139,6 @@ public class PinResetService {
         token.setUsed(true);
         token.setUsedAt(Instant.now());
         pinResetTokenRepository.save(token);
-
         user.setPinHash(pinEncoder.encode(newPin));
         userRepository.save(user);
     }

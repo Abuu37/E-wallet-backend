@@ -41,8 +41,8 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${app.initial-admin.phone}")
     private String phone;
 
-    @Value("${app.initial-admin.password}")
-    private String password;
+    @Value("${app.initial-admin.pin}")
+    private String pin;
 
     @Override
     @Transactional
@@ -50,6 +50,12 @@ public class DataInitializer implements CommandLineRunner {
 
         if (userRepository.findByEmail(email).isPresent()) {
             return;
+        }
+
+        if (!pin.matches("^\\d{4}$")) {
+            throw new IllegalStateException(
+                    "app.initial-admin.pin must be exactly 4 digits"
+            );
         }
 
         RoleEntity adminRole = roleRepository.findByName(ADMIN_ROLE)
@@ -64,7 +70,7 @@ public class DataInitializer implements CommandLineRunner {
                 .lastName(lastName)
                 .email(email)
                 .phone(phone)
-                .pinHash(pinEncoder.encode(password))
+                .pinHash(pinEncoder.encode(pin))
                 .status(UserStatus.ACTIVE)
                 .build();
 

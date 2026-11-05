@@ -15,14 +15,6 @@ CROSS JOIN permissions p
 WHERE r.name = 'ADMIN'
   AND p.name = 'TRANSACTION_VIEW_ALL';
 
--- FINANCIAL
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r
-CROSS JOIN permissions p
-WHERE r.name = 'FINANCIAL'
-  AND p.name = 'TRANSACTION_VIEW_ALL';
-
 -- CASHIER
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id
@@ -41,5 +33,6 @@ WHERE r.name = 'CUSTOMER'
 
 /* ========= RETIRE THE OLD COARSE-GRAINED PERMISSION ============*/
 -- role_permissions has ON DELETE CASCADE on permission_id, so this also
--- removes the old ADMIN/FINANCIAL/CASHIER/CUSTOMER grants of TRANSACTION_VIEW.
+-- removes the old ADMIN/CASHIER/CUSTOMER grants of TRANSACTION_VIEW.
+-- No dedicated FINANCIAL role exists — ADMIN covers financial reporting.
 DELETE FROM permissions WHERE name = 'TRANSACTION_VIEW';

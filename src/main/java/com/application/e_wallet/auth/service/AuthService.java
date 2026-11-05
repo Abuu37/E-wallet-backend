@@ -22,6 +22,7 @@ import com.application.e_wallet.otp.entity.OtpVerificationEntity;
 import com.application.e_wallet.otp.repository.OtpVerificationRepository;
 import com.application.e_wallet.otp.service.EmailService;
 import com.application.e_wallet.wallet.service.WalletService;
+import io.jsonwebtoken.JwtException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -97,7 +98,6 @@ public class AuthService {
 
         return RegistrationResponse.builder()
                 .userId(savedUser.getId())
-                .message("Customer registered successfully. Verification code has been sent to your email.")
                 .status(savedUser.getStatus())
                 .build();
     }
@@ -106,7 +106,7 @@ public class AuthService {
      * SET PIN — completes registration once the email has been OTP-verified.
      */
     @Transactional(dontRollbackOn = BadRequestException.class)
-    public void setPin(SetPinRequest request) {
+    public UserProfileResponse setPin(SetPinRequest request) {
 
         String email = request.getEmail().trim().toLowerCase();
         String genericErrorMessage = "PIN cannot be set for this account.";
@@ -144,13 +144,21 @@ public class AuthService {
 
         user.setPinHash(pinEncoder.encode(request.getPin()));
         user.setStatus(UserStatus.ACTIVE);
-
         userRepository.save(user);
-
         CustomerEntity customer = customerService.activateCustomer(user.getId());
         walletService.createWallet(customer);
 
         emailService.sendPinSetConfirmation(user.getEmail());
+
+        return UserProfileResponse.builder()
+                .userId(user.getId())
+                .firstName(user.getFirstName())
+                .middleName(user.getMiddleName())
+                .lastName(user.getLastName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .status(user.getStatus())
+                .build();
     }
 
     /**
@@ -176,7 +184,66 @@ public class AuthService {
             );
         }
 
-        String accessToken = jwtService.generateAccessToken(user);
+        String refreshToken = issueSession(user);
+
+        return buildLoginResponse(
+                user,
+                refreshToken
+        );
+    }
+
+    /**
+     * REFRESH TOKEN — exchanges a valid, unused refresh token for a new
+     * access/refresh pair. Rotates the refresh token on every use: the
+     * presented token's session is revoked and a brand-new session is
+     * created. If a token belonging to an already-revoked session is
+     * presented again (reuse of a rotated-out or previously logged-out
+     * token), every session for that user is revoked — that reuse is the
+     * standard signal that the refresh token has been stolen.
+     */
+    @Transactional
+    public LoginResponse refreshToken(String refreshToken) {
+
+        String invalidTokenMessage = "Invalid refresh token";
+
+        try {
+            if (!JwtService.REFRESH_TOKEN_TYPE.equals(jwtService.extractTokenType(refreshToken))) {
+                throw new AuthenticationException(invalidTokenMessage);
+            }
+        } catch (JwtException | IllegalArgumentException exception) {
+            throw new AuthenticationException(invalidTokenMessage);
+        }
+
+        String tokenHash = refreshTokenHashService.hash(refreshToken);
+
+        UserSessionEntity session = userSessionRepository.findByRefreshTokenHash(tokenHash)
+                .orElseThrow(() -> new AuthenticationException(invalidTokenMessage));
+
+        if (session.isRevoked()) {
+            // Reuse of a token we already rotated away from (or logged out) —
+            // treat it as theft and kill every session for this user.
+            userSessionRepository.deleteAllByUserId(session.getUser().getId());
+            throw new AuthenticationException(
+                    "Refresh token has already been used. All sessions have been revoked; please log in again."
+            );
+        }
+
+        if (session.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            throw new AuthenticationException("Refresh token has expired. Please log in again.");
+        }
+
+        UserEntity user = session.getUser();
+
+        session.setRevoked(true);
+        session.setRevokedAt(OffsetDateTime.now());
+        userSessionRepository.save(session);
+
+        String newRefreshToken = issueSession(user);
+
+        return buildLoginResponse(user, newRefreshToken);
+    }
+
+    private String issueSession(UserEntity user) {
         String refreshToken = jwtService.generateRefreshToken(user);
 
         UserSessionEntity session = UserSessionEntity.builder()
@@ -187,6 +254,12 @@ public class AuthService {
                 .build();
 
         userSessionRepository.save(session);
+
+        return refreshToken;
+    }
+
+    private LoginResponse buildLoginResponse(UserEntity user, String refreshToken) {
+        String accessToken = jwtService.generateAccessToken(user);
 
         List<String> roles = user.getRoles().stream()
                 .map(RoleEntity::getName)
@@ -227,22 +300,7 @@ public class AuthService {
         return AccountStatusResponse.builder()
                 .status(user.getStatus())
                 .active(active)
-                .message(getStatusMessage(user.getStatus()))
                 .build();
-    }
-
-    private String getStatusMessage(UserStatus status) {
-
-        return switch (status) {
-
-            case ACTIVE -> "Account is active";
-            case PENDING -> "Account is pending";
-            case AWAITING_PIN -> "Account is awaiting PIN setup";
-            case SUSPENDED -> "Account is suspended";
-            case BLOCKED -> "Account is blocked";
-            case CLOSED -> "Account is closed";
-            case DISABLED -> "Account is disabled";
-        };
     }
 
     /**

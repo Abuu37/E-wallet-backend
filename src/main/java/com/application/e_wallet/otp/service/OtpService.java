@@ -46,6 +46,8 @@ public class OtpService {
 
         otpVerificationRepository.save(verification);
 
+        log.info("OTP generated for {} (expiresAt={})", user.getEmail(), verification.getExpiresAt());
+
         return otp;
     }
 

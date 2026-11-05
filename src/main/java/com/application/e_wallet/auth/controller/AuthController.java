@@ -12,7 +12,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,7 +41,7 @@ public class AuthController {
         ApiResponse<RegistrationResponse> body = ApiResponse.<RegistrationResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.CREATED.value())
-                .message("Customer registered successfully")
+                .message("OTP has been sent to your email.")
                 .data(response)
                 .build();
 
@@ -52,7 +51,7 @@ public class AuthController {
     }
 
     @PostMapping("/set-pin")
-    public ResponseEntity<ApiResponse<Void>> setPin(@Valid @RequestBody SetPinRequest request, HttpServletRequest httpRequest){
+    public ResponseEntity<ApiResponse<UserProfileResponse>> setPin(@Valid @RequestBody SetPinRequest request, HttpServletRequest httpRequest){
 
         String ip = httpRequest.getRemoteAddr();
 
@@ -60,12 +59,13 @@ public class AuthController {
             throw new TooManyRequestsException("Too many attempts. Please try again later.");
         }
 
-        authService.setPin(request);
+        UserProfileResponse response = authService.setPin(request);
 
-        ApiResponse<Void> body = ApiResponse.<Void>builder()
+        ApiResponse<UserProfileResponse> body = ApiResponse.<UserProfileResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("PIN set successfully. You can now log in.")
+                .message("Customer registered successfully. You can now log in.")
+                .data(response)
                 .build();
 
         return ResponseEntity
@@ -97,7 +97,6 @@ public class AuthController {
     }
 
     @GetMapping("/status")
-    @PreAuthorize("hasAuthority('CUSTOMER_VIEW')")
     public ResponseEntity<ApiResponse<AccountStatusResponse>> accountStatus(Authentication authentication){
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         AccountStatusResponse response = authService.getAccountStatus(principal.email());
@@ -105,9 +104,10 @@ public class AuthController {
         ApiResponse<AccountStatusResponse> body = ApiResponse.<AccountStatusResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Account status successfully changed")
+                .message("Account status retrieved successfully")
                 .data(response)
                 .build();
+
 
         return ResponseEntity
                 .status(HttpStatus.OK)
@@ -151,7 +151,7 @@ public class AuthController {
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("If an account exists for this email, a PIN reset code has been sent.")
+                .message("OTP has been sent to your email.")
                 .build();
 
         return ResponseEntity
@@ -176,6 +176,29 @@ public class AuthController {
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
                 .message("PIN reset successfully")
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(body);
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<LoginResponse>> refresh(@Valid @RequestBody RefreshTokenRequest request, HttpServletRequest httpRequest){
+
+        String ip = httpRequest.getRemoteAddr();
+
+        if (!rateLimitingService.tryConsumeIp(ip)) {
+            throw new TooManyRequestsException("Too many requests. Please try again later.");
+        }
+
+        LoginResponse response = authService.refreshToken(request.getRefreshToken());
+
+        ApiResponse<LoginResponse> body = ApiResponse.<LoginResponse>builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.OK.value())
+                .message("Token refreshed successfully")
+                .data(response)
                 .build();
 
         return ResponseEntity
