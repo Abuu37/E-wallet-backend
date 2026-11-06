@@ -31,24 +31,37 @@ public class OtpService {
     @Transactional
     public String generateAndStoreOtp(UserEntity user) {
 
-        otpVerificationRepository.deleteByUser(user);
+        try {
+            otpVerificationRepository.deleteByUser(user);
 
-        String otp = otpGenerator.generate(otpProperties.getLength());
+            String otp = otpGenerator.generate(otpProperties.getLength());
 
-        OtpVerificationEntity verification = OtpVerificationEntity.builder()
-                .user(user)
-                .otpHash(passwordEncoder.encode(otp))
-                .expiresAt(Instant.now().plusSeconds(otpProperties.getExpirationMinutes() * 60L))
-                .attempts(0)
-                .maxAttempts(otpProperties.getMaxAttempts())
-                .verified(false)
-                .build();
+//            OtpVerificationEntity verification = OtpVerificationEntity.builder()
+//                    .user(user)
+//                    .otpHash(passwordEncoder.encode(otp))
+//                    .expiresAt(Instant.now().plusSeconds(otpProperties.getExpirationMinutes() * 60L))
+//                    .attempts(0)
+//                    .maxAttempts(otpProperties.getMaxAttempts())
+//                    .verified(false)
+//                    .build();
 
-        otpVerificationRepository.save(verification);
+            OtpVerificationEntity verification = new OtpVerificationEntity();
+            verification.setUser(user);
+            verification.setAttempts(0);
+            verification.setCreatedAt(Instant.now() );
+            verification.setOtpHash(passwordEncoder.encode(otp));
+            verification.setMaxAttempts(otpProperties.getMaxAttempts());
+            verification.setVerified(false);
+            otpVerificationRepository.save(verification);
 
-        log.info("OTP generated for {} (expiresAt={})", user.getEmail(), verification.getExpiresAt());
+            log.info("OTP generated for {} (expiresAt={})", user.getEmail(), verification.getExpiresAt());
 
-        return otp;
+            return otp;
+        }catch (Exception e){
+
+            log.error("  error ======{}", e.getMessage());
+            throw new BadRequestException(e.getMessage());
+        }
     }
 
     //======== Shared by registration and resend: generate, store, then email ========
