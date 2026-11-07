@@ -17,7 +17,8 @@ import java.util.List;
         "refreshTokenExpiresIn",
         "tokenType",
         "roles",
-        "permissions"
+        "permissions",
+        "mustChangePin"
 })
 public class LoginResponse {
 
@@ -28,5 +29,6 @@ public class LoginResponse {
     private String tokenType;
     private List<String> roles;
     private List<String> permissions;
+    private boolean mustChangePin;
 
 }

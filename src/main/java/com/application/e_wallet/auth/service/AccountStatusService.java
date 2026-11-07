@@ -20,6 +20,9 @@ public class AccountStatusService {
             case ACTIVE -> {
                 // CAN CONTINUE
             }
+            case PIN_CHANGE_REQUIRED -> {
+                // CAN CONTINUE — must log in with the one-time PIN to change it via changePin()
+            }
             case PENDING -> {
                 throw new AuthenticationException(
                         "Account is pending "

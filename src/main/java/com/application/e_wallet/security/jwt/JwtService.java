@@ -76,6 +76,10 @@ public class JwtService {
         return parseToken(token).get("email", String.class);
     }
 
+    public String extractStatus(String token) {
+        return parseToken(token).get("status", String.class);
+    }
+
     private String generateToken(UserEntity user, String tokenType, long expirationMillis) {
 
         Date now = new Date();
@@ -96,6 +100,7 @@ public class JwtService {
         claims.put("email", user.getEmail());
         claims.put("roles", roles);
         claims.put("permissions", permissions);
+        claims.put("status", user.getStatus().name());
 
         return Jwts.builder()
                 .subject(user.getId().toString())

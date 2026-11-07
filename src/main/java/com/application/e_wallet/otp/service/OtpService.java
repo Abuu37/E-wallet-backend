@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -28,7 +29,6 @@ public class OtpService {
     private final EmailService emailService;
 
     //============ Generate Otp =============== //
-    @Transactional
     public String generateAndStoreOtp(UserEntity user) {
 
         try {
@@ -36,23 +36,17 @@ public class OtpService {
 
             String otp = otpGenerator.generate(otpProperties.getLength());
 
-//            OtpVerificationEntity verification = OtpVerificationEntity.builder()
-//                    .user(user)
-//                    .otpHash(passwordEncoder.encode(otp))
-//                    .expiresAt(Instant.now().plusSeconds(otpProperties.getExpirationMinutes() * 60L))
-//                    .attempts(0)
-//                    .maxAttempts(otpProperties.getMaxAttempts())
-//                    .verified(false)
-//                    .build();
+          OtpVerificationEntity verification = OtpVerificationEntity.builder()
+                  .user(user)
+                  .otpHash(passwordEncoder.encode(otp))
+                  .expiresAt(Instant.now().plusSeconds(otpProperties.getExpirationMinutes() * 60L))
+                  .attempts(0)
+                  .maxAttempts(otpProperties.getMaxAttempts())
+                  .verified(false)
+                  .build();
 
-            OtpVerificationEntity verification = new OtpVerificationEntity();
-            verification.setUser(user);
-            verification.setAttempts(0);
-            verification.setCreatedAt(Instant.now() );
-            verification.setOtpHash(passwordEncoder.encode(otp));
-            verification.setMaxAttempts(otpProperties.getMaxAttempts());
-            verification.setVerified(false);
-            otpVerificationRepository.save(verification);
+          otpVerificationRepository.save(verification);
+
 
             log.info("OTP generated for {} (expiresAt={})", user.getEmail(), verification.getExpiresAt());
 
@@ -65,6 +59,7 @@ public class OtpService {
     }
 
     //======== Shared by registration and resend: generate, store, then email ========
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void sendVerificationOtp(UserEntity user) {
 
         String otp = generateAndStoreOtp(user);
@@ -108,7 +103,7 @@ public class OtpService {
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() ->
                         new BadRequestException(
-                                "Invalid or expired verification code."
+                                "User not found. kindly register at our platform."
                         ));
 
         OtpVerificationEntity verification =

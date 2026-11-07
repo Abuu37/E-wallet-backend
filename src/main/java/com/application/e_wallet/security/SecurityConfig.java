@@ -3,6 +3,7 @@ package com.application.e_wallet.security;
 import com.application.e_wallet.security.jwt.JwtAccessDeniedHandler;
 import com.application.e_wallet.security.jwt.JwtAuthenticationEntryPoint;
 import com.application.e_wallet.security.jwt.JwtAuthenticationFilter;
+import com.application.e_wallet.security.jwt.PinChangeRequiredFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,6 +21,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final PinChangeRequiredFilter pinChangeRequiredFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
@@ -55,7 +57,8 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(pinChangeRequiredFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 

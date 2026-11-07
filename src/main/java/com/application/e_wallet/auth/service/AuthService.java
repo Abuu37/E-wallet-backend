@@ -279,6 +279,7 @@ public class AuthService {
                 .permissions(permissions)
                 .accessTokenExpiresIn(jwtProperties.getAccessTokenExpiration())
                 .refreshTokenExpiresIn(jwtProperties.getRefreshTokenExpiration())
+                .mustChangePin(user.getStatus() == UserStatus.PIN_CHANGE_REQUIRED)
                 .build();
     }
 
@@ -333,6 +334,10 @@ public class AuthService {
         userEntity.setPinHash(
                 pinEncoder.encode(request.getNewPin())
         );
+
+        if (userEntity.getStatus() == UserStatus.PIN_CHANGE_REQUIRED) {
+            userEntity.setStatus(UserStatus.ACTIVE);
+        }
 
         userRepository.save(userEntity);
 

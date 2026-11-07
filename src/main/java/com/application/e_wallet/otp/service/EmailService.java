@@ -78,6 +78,33 @@ public class EmailService {
     }
 
     @Async
+    public void sendOneTimePin(String to, String oneTimePin) {
+
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromAddress);
+            message.setTo(to);
+            message.setSubject("Your E-wallet Agent Account");
+            message.setText(
+                    "Hello,\n\n" +
+                            "Your agent account has been created.\n\n" +
+                            "Use the one-time PIN below to log in. You will be required to set a new PIN immediately after logging in:\n\n" +
+                            "One-Time PIN: " + oneTimePin + "\n\n" +
+                            "Please do not share this PIN with anyone. " +
+                            "Regards,\n" +
+                            "E-Wallet Team"
+            );
+            mailSender.send(message);
+            log.info("One-time PIN email successfully sent to {}", to);
+
+        } catch (Exception e) {
+
+            log.error("Failed to send one-time PIN email to {}. Reason: {}", to, e.getMessage());
+
+        }
+    }
+
+    @Async
     public void sendPinSetConfirmation(String to) {
 
         try {

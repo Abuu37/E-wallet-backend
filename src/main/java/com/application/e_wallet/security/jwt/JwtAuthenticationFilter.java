@@ -52,6 +52,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (JwtService.ACCESS_TOKEN_TYPE.equals(tokenType)) {
                         UUID userId = jwtService.extractUserId(jwt);
                         String email = jwtService.extractEmail(jwt);
+                        String status = jwtService.extractStatus(jwt);
                         String rolesClaim = jwtService.extractRoles(jwt);
                         List<String> permissionsClaim = jwtService.extractPermissions(jwt);
 
@@ -61,7 +62,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         ).<GrantedAuthority>map(SimpleGrantedAuthority::new).toList();
 
                         // 3. If validation passes, the FILTER logs the user into Spring Security
-                        AuthenticatedUser principal = new AuthenticatedUser(userId, email);
+                        AuthenticatedUser principal = new AuthenticatedUser(userId, email, status);
 
                         UsernamePasswordAuthenticationToken authToken =
                                 new UsernamePasswordAuthenticationToken(principal, null, authorities);

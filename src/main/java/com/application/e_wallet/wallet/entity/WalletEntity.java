@@ -1,5 +1,6 @@
 package com.application.e_wallet.wallet.entity;
 
+import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.financial_account.entity.FinancialAccountEntity;
 import jakarta.persistence.*;
@@ -9,8 +10,6 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@AllArgsConstructor
-@NoArgsConstructor
 @Table(
         name = "wallets",
         indexes = {
@@ -18,6 +17,13 @@ import java.util.UUID;
                         name = "idx_wallet_customer_id",
                         columnList = "customer_id",
                         unique = true
+                ),
+
+                @Index(
+                        name = "idx_wallet_agent_id",
+                        columnList = "agent_id",
+                        unique = true
+
                 ),
                 @Index(
                         name = "idx_wallet_wallet_number",
@@ -30,19 +36,27 @@ import java.util.UUID;
 @Getter
 @Setter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class WalletEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @OneToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(
             name = "customer_id",
-            nullable = false,
             unique = true
     )
     private CustomerEntity customer;
+
+    @OneToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(
+            name = "agent_id",
+            unique = true
+    )
+    private AgentEntity agent;
 
     @Column(
             name = "wallet_number",
@@ -62,8 +76,10 @@ public class WalletEntity {
     @OneToOne(
             mappedBy = "wallet",
             fetch = FetchType.LAZY,
-            cascade = CascadeType.ALL,
-            orphanRemoval = true
+            cascade = {
+                    CascadeType.PERSIST,
+                    CascadeType.MERGE
+            }
     )
     private FinancialAccountEntity financialAccount;
 
@@ -89,8 +105,8 @@ public class WalletEntity {
     }
     @PreUpdate
     protected void onUpdate() {
+
         updatedAt = OffsetDateTime.now();
     }
-
 
 }

@@ -77,7 +77,6 @@ public class FinancialAccountEntity {
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "wallet_id",
-            nullable = false,
             unique = true
     )
     private WalletEntity wallet;
