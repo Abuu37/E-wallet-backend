@@ -88,6 +88,14 @@ class CompanyMasterWalletServiceTest {
     }
 
     @Test
+    void mintRejectsAmountWithMoreThanTwoDecimalPlaces() {
+        assertThatThrownBy(() -> companyMasterWalletService.mint(
+                new MintFloatRequest(new BigDecimal("10.005"), "x"), adminUserId))
+                .isInstanceOf(BadRequestException.class);
+        verifyNoInteractions(ledgerService);
+    }
+
+    @Test
     void allocateMovesFloatFromUnallocatedToAgent() {
         FinancialAccountEntity agentAccount = FinancialAccountEntity.builder()
                 .id(UUID.randomUUID())
@@ -153,6 +161,7 @@ class CompanyMasterWalletServiceTest {
         companyMasterWalletService.withdraw(new AgentWithdrawRequest(agentId, new BigDecimal("40.00"), "return"), adminUserId);
 
         assertThat(wallet.getUnallocatedFloat()).isEqualTo(new BigDecimal("1040.00"));
+        assertThat(wallet.getTotalDistributedFloat()).isEqualTo(new BigDecimal("460.00"));
         assertThat(agentAccount.getCurrentBalance()).isEqualTo(new BigDecimal("60.00"));
         verify(companyMasterWalletRepository).findSingletonForUpdate();
     }

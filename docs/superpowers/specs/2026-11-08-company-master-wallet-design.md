@@ -18,9 +18,10 @@ schema was designed with this feature in mind; it was never built.
 ## Goals
 
 - A single company master wallet holding `unallocatedFloat` (not yet
-  given to any agent) and `totalDistributedFloat` (lifetime total handed
-  out — a running counter for reporting, not a live balance to subtract
-  from).
+  given to any agent) and `totalDistributedFloat` (the live outstanding
+  balance currently held by agents — incremented on allocate, decremented
+  on withdraw — equal to the sum of all agents' current float balances
+  at any point in time, not an immutable lifetime counter).
 - Three operations, each fully auditable:
   - **Mint** — record that real money landed in the company's escrow bank
     account, increasing `unallocatedFloat`.

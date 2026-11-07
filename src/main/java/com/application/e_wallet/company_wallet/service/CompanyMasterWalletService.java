@@ -39,12 +39,14 @@ public class CompanyMasterWalletService {
     private final TransactionJournalRepository transactionJournalRepository;
     private final LedgerService ledgerService;
 
+    @Transactional(readOnly = true)
     public CompanyMasterWalletResponse getWallet() {
         CompanyMasterWalletEntity wallet = companyMasterWalletRepository.findSingleton()
                 .orElseThrow(() -> new IllegalStateException("Company master wallet not initialized"));
         return toResponse(wallet);
     }
 
+    @Transactional(readOnly = true)
     public List<TransactionJournalResponse> getJournalHistory() {
         return transactionJournalRepository.findAllByOrderByCreatedAtDesc()
                 .stream()
@@ -57,6 +59,7 @@ public class CompanyMasterWalletService {
         if (request.amount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Mint amount must be positive");
         }
+        validateScale(request.amount());
 
         UserEntity admin = resolveAdmin(adminUserId);
         CompanyMasterWalletEntity wallet = lockWallet();
@@ -78,6 +81,7 @@ public class CompanyMasterWalletService {
         if (request.amount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Allocate amount must be positive");
         }
+        validateScale(request.amount());
 
         UserEntity admin = resolveAdmin(adminUserId);
         CompanyMasterWalletEntity wallet = lockWallet();
@@ -107,6 +111,7 @@ public class CompanyMasterWalletService {
         if (request.amount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Withdraw amount must be positive");
         }
+        validateScale(request.amount());
 
         UserEntity admin = resolveAdmin(adminUserId);
         CompanyMasterWalletEntity wallet = lockWallet();
@@ -139,6 +144,19 @@ public class CompanyMasterWalletService {
      */
     private static BigDecimal normalizeZero(BigDecimal amount) {
         return amount.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO : amount;
+    }
+
+    /**
+     * Every money column is NUMERIC(19,2). An amount with more than 2 decimal places would be
+     * rounded independently by each column it is persisted into, silently breaking the
+     * escrow == sum-of-float invariant this feature exists to maintain. Reject it before any
+     * repository interaction. This is defense-in-depth alongside the @Digits constraint on the
+     * request DTOs, for any caller that bypasses @Valid.
+     */
+    private void validateScale(BigDecimal amount) {
+        if (amount.stripTrailingZeros().scale() > 2) {
+            throw new BadRequestException("Amount must have at most 2 decimal places");
+        }
     }
 
     private UserEntity resolveAdmin(UUID adminUserId) {
