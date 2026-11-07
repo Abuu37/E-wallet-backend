@@ -14,4 +14,6 @@ public interface FinancialAccountRepository extends JpaRepository<FinancialAccou
 
     Optional<FinancialAccountEntity> findByAccountNumber(String accountNumber);
 
+    Optional<FinancialAccountEntity> findByWallet_Agent_Id(UUID agentId);
+
 }
