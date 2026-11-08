@@ -1,4 +1,4 @@
-package com.application.e_wallet.ledger.service;
+package com.application.e_wallet.ledger.dto;
 
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.entity.LedgerAccountType;

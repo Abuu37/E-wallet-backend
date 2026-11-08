@@ -180,6 +180,29 @@ sum of all customer wallet balances. That reconciliation report is not
 part of this work, but the ledger structure here is what makes it
 possible later without a second, competing ledger.
 
+**Real bank integration (next building block, not started).** `mint` is
+currently a manually-trusted admin action: the admin asserts that real
+money landed in the escrow account, with no verification. `ESCROW_BANK` is
+only ever a label on a journal line — there is no code anywhere that
+actually talks to a bank. When a real banking partner (e.g. CRDB) is
+integrated, the ledger's shape does not need to change — `TransactionType`,
+`LedgerAccountType`, `EntryType`, and `LedgerService.postJournal(...)` all
+stay as-is. What would need to be added is new, separate work:
+- A `bank` integration module that calls the bank's API or consumes its
+  webhook/statement feed.
+- `mint` moving from "admin says so" to either bank-triggered (a deposit
+  webhook calls `mint` automatically) or bank-verified (admin still calls
+  it, but the system cross-checks the claimed amount against the bank's
+  reported balance before accepting).
+- An admin-facing way to set `escrowBankAccountNo` (currently always null —
+  no endpoint exists to populate it).
+- A reconciliation job comparing the bank's real balance against
+  `unallocatedFloat + totalDistributedFloat` (and later, customer wallet
+  balances) on a schedule, alerting on mismatch.
+
+This is deliberately deferred — `ESCROW_BANK` stays a manual, trust-based
+placeholder until there's an actual need to automate or verify it.
+
 ## What's left to the builder
 
 - There is a pre-existing, untracked, never-wired-up scratch file at

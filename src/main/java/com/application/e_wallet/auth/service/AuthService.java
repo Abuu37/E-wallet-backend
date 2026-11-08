@@ -25,6 +25,7 @@ import com.application.e_wallet.wallet.service.WalletService;
 import io.jsonwebtoken.JwtException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -112,22 +114,23 @@ public class AuthService {
         String genericErrorMessage = "PIN cannot be set for this account.";
 
         UserEntity user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new BadRequestException(
-                                genericErrorMessage
-                        ));
+                .orElseThrow(() -> {
+                    log.warn("========== set-pin rejected: no account found for email={} =========", email);
+                    return new BadRequestException(genericErrorMessage);
+                });
 
         if (user.getStatus() != UserStatus.AWAITING_PIN) {
+            log.warn("======= set-pin rejected: email={} has status={}, expected AWAITING_PIN =======", email, user.getStatus());
             throw new BadRequestException(
                     genericErrorMessage
             );
         }
 
         OtpVerificationEntity verification = otpVerificationRepository.findByUser(user)
-                .orElseThrow(() ->
-                        new BadRequestException(
-                                genericErrorMessage
-                        ));
+                .orElseThrow(() -> {
+                    log.warn("set-pin rejected: no OTP verification record for email={}", email);
+                    return new BadRequestException(genericErrorMessage);
+                });
 
         boolean windowExpired = verification.getVerifiedAt() == null
                 || verification.getVerifiedAt().isBefore(Instant.now().minus(PIN_SETUP_WINDOW_MINUTES, ChronoUnit.MINUTES));

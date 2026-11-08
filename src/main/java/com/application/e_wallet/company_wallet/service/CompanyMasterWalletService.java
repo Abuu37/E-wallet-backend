@@ -17,7 +17,7 @@ import com.application.e_wallet.ledger.entity.LedgerAccountType;
 import com.application.e_wallet.ledger.entity.TransactionJournalEntity;
 import com.application.e_wallet.ledger.entity.TransactionType;
 import com.application.e_wallet.ledger.repository.TransactionJournalRepository;
-import com.application.e_wallet.ledger.service.JournalLineRequest;
+import com.application.e_wallet.ledger.dto.JournalLineRequest;
 import com.application.e_wallet.ledger.service.LedgerService;
 import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.user.repository.UserRepository;
@@ -56,6 +56,7 @@ public class CompanyMasterWalletService {
 
     @Transactional
     public CompanyMasterWalletResponse mint(MintFloatRequest request, UUID adminUserId) {
+
         if (request.amount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Mint amount must be positive");
         }

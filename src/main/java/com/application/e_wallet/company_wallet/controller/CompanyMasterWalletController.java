@@ -82,8 +82,7 @@ public class CompanyMasterWalletController {
 
     @PostMapping("/allocate")
     @PreAuthorize("hasAuthority('FLOAT_MANAGE')")
-    public ResponseEntity<ApiResponse<CompanyMasterWalletResponse>> allocate(
-            @Valid @RequestBody AllocateFloatRequest request, Authentication authentication) {
+    public ResponseEntity<ApiResponse<CompanyMasterWalletResponse>> allocate(@Valid @RequestBody AllocateFloatRequest request, Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         UUID adminUserId = principal.userId();
 

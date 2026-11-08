@@ -1,5 +1,6 @@
 package com.application.e_wallet.ledger.service;
 
+import com.application.e_wallet.ledger.dto.JournalLineRequest;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.entity.TransactionJournalEntity;
 import com.application.e_wallet.ledger.entity.TransactionJournalLineEntity;
