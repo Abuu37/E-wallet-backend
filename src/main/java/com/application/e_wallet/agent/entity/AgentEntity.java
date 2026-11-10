@@ -1,5 +1,7 @@
 package com.application.e_wallet.agent.entity;
 
+import com.application.e_wallet.location.entity.DistrictEntity;
+import com.application.e_wallet.location.entity.RegionEntity;
 import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.wallet.entity.WalletEntity;
 import jakarta.persistence.*;
@@ -9,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -52,6 +55,21 @@ public class AgentEntity {
             length = 30
     )
     private String agentNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender", nullable = false, length = 10)
+    private Gender gender;
+
+    @Column(name = "date_of_birth", nullable = false)
+    private LocalDate dateOfBirth;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "region_id", nullable = false)
+    private RegionEntity region;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "district_id", nullable = false)
+    private DistrictEntity district;
 
     // One agent has one float wallet.
     @OneToOne(

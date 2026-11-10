@@ -4,12 +4,17 @@ import com.application.e_wallet.agent.dto.AgentCreationRequest;
 import com.application.e_wallet.agent.dto.AgentCreationResponse;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.repository.AgentRepository;
+import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.financial_account.entity.FinancialAccountEntity;
 import com.application.e_wallet.financial_account.entity.FinancialAccountStatus;
 import com.application.e_wallet.financial_account.entity.FinancialAccountType;
 import com.application.e_wallet.financial_account.repository.FinancialAccountRepository;
+import com.application.e_wallet.location.entity.DistrictEntity;
+import com.application.e_wallet.location.entity.RegionEntity;
+import com.application.e_wallet.location.repository.DistrictRepository;
+import com.application.e_wallet.location.repository.RegionRepository;
 import com.application.e_wallet.otp.service.EmailService;
 import com.application.e_wallet.otp.service.OtpGenerator;
 import com.application.e_wallet.role.entity.RoleEntity;
@@ -40,6 +45,8 @@ public class AgentService {
     private final RoleRepository roleRepository;
     private final WalletRepository walletRepository;
     private final FinancialAccountRepository financialAccountRepository;
+    private final RegionRepository regionRepository;
+    private final DistrictRepository districtRepository;
     private final PhoneNumberNormalizer phoneNumberNormalizer;
     private final OtpGenerator otpGenerator;
     private final PasswordEncoder pinEncoder;
@@ -65,6 +72,16 @@ public class AgentService {
                                 "AGENT role not found"
                         ));
 
+        RegionEntity region = regionRepository.findByExternalId(request.regionId())
+                .orElseThrow(() -> new BadRequestException("Unknown regionId"));
+
+        DistrictEntity district = districtRepository.findByExternalId(request.districtId())
+                .orElseThrow(() -> new BadRequestException("Unknown districtId"));
+
+        if (!district.getRegion().getId().equals(region.getId())) {
+            throw new BadRequestException("districtId does not belong to regionId");
+        }
+
         String middleName = request.middleName() != null ? request.middleName().trim() : "";
         String oneTimePin = otpGenerator.generate(ONE_TIME_PIN_LENGTH);
 
@@ -85,6 +102,10 @@ public class AgentService {
         AgentEntity agent = AgentEntity.builder()
                 .user(savedUser)
                 .agentNumber(generateAgentCode())
+                .gender(request.gender())
+                .dateOfBirth(request.dateOfBirth())
+                .region(region)
+                .district(district)
                 .build();
 
         AgentEntity savedAgent = agentRepository.save(agent); //=== Agent account created ====

@@ -1,0 +1,13 @@
+-- V18: Add onboarding KYC fields to agents (gender, date of birth, region, district).
+
+ALTER TABLE agents ADD COLUMN gender VARCHAR(10) NOT NULL DEFAULT 'OTHER';
+ALTER TABLE agents ADD COLUMN date_of_birth DATE NOT NULL DEFAULT '1970-01-01';
+ALTER TABLE agents ADD COLUMN region VARCHAR(100) NOT NULL DEFAULT '';
+ALTER TABLE agents ADD COLUMN district VARCHAR(100) NOT NULL DEFAULT '';
+
+ALTER TABLE agents ALTER COLUMN gender DROP DEFAULT;
+ALTER TABLE agents ALTER COLUMN date_of_birth DROP DEFAULT;
+ALTER TABLE agents ALTER COLUMN region DROP DEFAULT;
+ALTER TABLE agents ALTER COLUMN district DROP DEFAULT;
+
+ALTER TABLE agents ADD CONSTRAINT chk_agents_gender CHECK (gender IN ('MALE', 'FEMALE', 'OTHER'));
