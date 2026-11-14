@@ -1,5 +1,6 @@
 package com.application.e_wallet.permission.entity;
 
+import com.application.e_wallet.module.entity.ModuleEntity;
 import com.application.e_wallet.role.entity.RoleEntity;
 import jakarta.persistence.*;
 import lombok.*;
@@ -39,10 +40,9 @@ public class PermissionEntity {
     @ManyToMany(mappedBy = "permissions")
     private Set<RoleEntity> roles = new HashSet<>();
 
-    // Plain UUID for now - the ModuleEntity/module-grouping application code lands in a
-    // later task; this just needs the column mapped so the entity matches the schema.
-    @Column(name = "module_reference", nullable = false)
-    private UUID moduleReference;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "module_reference", nullable = false)
+    private ModuleEntity module;
 
     @Column(name ="created_at", nullable = false)
     private Instant createdAt;
