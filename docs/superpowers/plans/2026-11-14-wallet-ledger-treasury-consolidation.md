@@ -62,6 +62,11 @@ ALTER TABLE wallets
     ADD COLUMN balance NUMERIC(19,2),
     ADD COLUMN version BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN external_reference VARCHAR(100);
+
+-- Dropped here, not in V27: V26's net-new company-level/commission wallet rows set
+-- neither customer_id nor agent_id (ownership is moving to user_id alone), which this
+-- V15 constraint forbids. It must be gone before V26 runs, not after.
+ALTER TABLE wallets DROP CONSTRAINT chk_wallets_exactly_one_owner;
 ```
 
 - [ ] **Step 2: Write `V26__wallets_backfill_and_seed.sql`**
@@ -150,7 +155,8 @@ ALTER TABLE wallets ADD CONSTRAINT uk_wallets_account_number UNIQUE (account_num
 
 ALTER TABLE wallets DROP CONSTRAINT uk_wallets_customer_id;
 ALTER TABLE wallets DROP CONSTRAINT uk_wallets_agent_id;
-ALTER TABLE wallets DROP CONSTRAINT chk_wallets_exactly_one_owner;
+-- chk_wallets_exactly_one_owner was already dropped in V25 (see its comment there) —
+-- dropping it again here would error with "constraint does not exist".
 ALTER TABLE wallets DROP CONSTRAINT fk_wallets_customer;
 ALTER TABLE wallets DROP CONSTRAINT fk_wallets_agent;
 ALTER TABLE wallets DROP COLUMN customer_id;
