@@ -55,7 +55,6 @@ public class TreasuryService {
                 companyWallet.getCurrency(),
                 companyWallet.getBalance(),
                 totalDistributedFloat,
-                companyWallet.getExternalReference(),
                 buildMetrics()
         );
     }

@@ -31,6 +31,9 @@ public class WalletEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "reference", nullable = false, unique = true)
+    private UUID reference;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private UserEntity user;
@@ -63,8 +66,8 @@ public class WalletEntity {
     @Column(nullable = false)
     private Long version;
 
-    @Column(name = "external_reference")
-    private String externalReference;
+    @Column(name = "account_name", nullable = false, length = 150)
+    private String accountName;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
@@ -92,6 +95,10 @@ public class WalletEntity {
 
         if (version == null) {
             version = 0L;
+        }
+
+        if (reference == null) {
+            reference = UUID.randomUUID();
         }
     }
     @PreUpdate

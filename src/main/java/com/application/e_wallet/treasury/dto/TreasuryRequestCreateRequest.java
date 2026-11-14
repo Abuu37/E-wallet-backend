@@ -19,7 +19,9 @@ public record TreasuryRequestCreateRequest(
         BigDecimal amount,
 
         @NotBlank
-        String reason
+        String reason,
+
+        String externalReference
 
 ) {
 }

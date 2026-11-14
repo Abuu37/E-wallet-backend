@@ -42,7 +42,12 @@ class WalletServiceTest {
     @Test
     void createWalletCreatesOneCustomerMainWalletWithZeroBalance() {
         UserEntity user = UserEntity.builder().id(UUID.randomUUID()).phone("0712345678").build();
-        CustomerEntity customer = CustomerEntity.builder().id(UUID.randomUUID()).user(user).build();
+        CustomerEntity customer = CustomerEntity.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .firstName("Jane")
+                .lastName("Doe")
+                .build();
         when(walletRepository.existsByUserIdAndWalletType(user.getId(), WalletType.CUSTOMER_MAIN)).thenReturn(false);
         when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -52,6 +57,7 @@ class WalletServiceTest {
         assertThat(wallet.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(wallet.getWalletNumber()).isEqualTo("0712345678");
         assertThat(wallet.getAccountNumber()).isEqualTo("0712345678");
+        assertThat(wallet.getAccountName()).isEqualTo("Jane Doe");
     }
 
     @Test

@@ -41,6 +41,7 @@ public class WalletService {
                 .walletType(WalletType.CUSTOMER_MAIN)
                 .walletNumber(phone)
                 .accountNumber(phone)
+                .accountName(customer.getFirstName() + " " + customer.getLastName())
                 .balance(BigDecimal.ZERO)
                 .currency("TZS")
                 .status(WalletStatus.ACTIVE)

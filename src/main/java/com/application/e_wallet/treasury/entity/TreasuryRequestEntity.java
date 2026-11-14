@@ -66,6 +66,9 @@ public class TreasuryRequestEntity {
     @Column(name = "decision_note", length = 500)
     private String decisionNote;
 
+    @Column(name = "external_reference", length = 100)
+    private String externalReference;
+
     @Column(name = "decided_at")
     private OffsetDateTime decidedAt;
 

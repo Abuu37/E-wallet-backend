@@ -8,7 +8,6 @@ public record TreasuryOverviewResponse(
         String currency,
         BigDecimal unallocatedFloat,
         BigDecimal totalDistributedFloat,
-        String externalReference,
         TreasuryMetrics metrics
 ) {
 }

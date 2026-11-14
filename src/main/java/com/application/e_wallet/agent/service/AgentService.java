@@ -124,12 +124,14 @@ public class AgentService {
 
         String floatNumber = generateFloatNumber();//todo: generate valid GL Accounts based on the BOT requirements
         String commissionNumber = "COM-" + savedAgent.getAgentNumber();
+        String agentFullName = savedAgent.getFirstName() + " " + savedAgent.getLastName();
 
         WalletEntity floatWallet = WalletEntity.builder()
                 .user(savedUser)
                 .walletType(WalletType.AGENT_FLOAT)
                 .walletNumber(floatNumber)
                 .accountNumber(floatNumber)
+                .accountName(agentFullName + " — Float")
                 .balance(BigDecimal.ZERO)
                 .currency("TZS")
                 .status(WalletStatus.ACTIVE)
@@ -140,6 +142,7 @@ public class AgentService {
                 .walletType(WalletType.AGENT_COMMISSION)
                 .walletNumber(commissionNumber)
                 .accountNumber(commissionNumber)
+                .accountName(agentFullName + " — Commission")
                 .balance(BigDecimal.ZERO)
                 .currency("TZS")
                 .status(WalletStatus.ACTIVE)

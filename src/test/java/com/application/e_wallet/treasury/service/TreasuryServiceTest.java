@@ -9,6 +9,7 @@ import com.application.e_wallet.ledger.entity.TransactionType;
 import com.application.e_wallet.ledger.repository.TransactionJournalRepository;
 import com.application.e_wallet.ledger.service.LedgerService;
 import com.application.e_wallet.treasury.dto.MintRequest;
+import com.application.e_wallet.treasury.dto.TreasuryOverviewResponse;
 import com.application.e_wallet.treasury.repository.TreasuryRequestRepository;
 import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.user.repository.UserRepository;
@@ -104,6 +105,23 @@ class TreasuryServiceTest {
                 .thenReturn(Optional.of(agentFloatWallet));
 
         lenient().when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    @Test
+    void getOverviewReturnsCompanyWalletSnapshotWithoutExternalReference() {
+        lenient().when(walletRepository.findByWalletType(WalletType.COMPANY_MASTER_ACCOUNT))
+                .thenReturn(Optional.of(companyWallet));
+        lenient().when(walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT))
+                .thenReturn(new BigDecimal("500.00"));
+        lenient().when(treasuryRequestRepository.sumAmountByStatus(any())).thenReturn(BigDecimal.ZERO);
+        lenient().when(treasuryRequestRepository.countByStatus(any())).thenReturn(0L);
+
+        TreasuryOverviewResponse overview = treasuryService.getOverview();
+
+        assertThat(overview.walletId()).isEqualTo(companyWallet.getId());
+        assertThat(overview.currency()).isEqualTo("TZS");
+        assertThat(overview.unallocatedFloat()).isEqualByComparingTo(new BigDecimal("1000.00"));
+        assertThat(overview.totalDistributedFloat()).isEqualByComparingTo(new BigDecimal("500.00"));
     }
 
     @Test

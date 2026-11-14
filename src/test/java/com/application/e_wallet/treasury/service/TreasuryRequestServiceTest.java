@@ -8,7 +8,9 @@ import com.application.e_wallet.location.entity.RegionEntity;
 import com.application.e_wallet.staff.entity.StaffEntity;
 import com.application.e_wallet.staff.entity.StaffStatus;
 import com.application.e_wallet.staff.repository.StaffRepository;
+import com.application.e_wallet.treasury.dto.TreasuryRequestCreateRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestDecisionRequest;
+import com.application.e_wallet.treasury.dto.TreasuryRequestResponse;
 import com.application.e_wallet.treasury.entity.RequestStatus;
 import com.application.e_wallet.treasury.entity.RequestType;
 import com.application.e_wallet.treasury.entity.TreasuryRequestEntity;
@@ -30,6 +32,7 @@ import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -37,6 +40,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TreasuryRequestServiceTest {
@@ -114,6 +118,30 @@ class TreasuryRequestServiceTest {
         lenient().when(treasuryRequestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(walletRepository.findByUserIdAndWalletType(agentUserId, WalletType.AGENT_FLOAT))
                 .thenReturn(Optional.of(agentFloatWallet));
+    }
+
+    @Test
+    void createRequestPersistsExternalReferenceAndThreadsItToResponse() {
+        when(agentRepository.findByUserId(agentUserId)).thenReturn(Optional.of(request.getAgent()));
+
+        TreasuryRequestCreateRequest createRequest = new TreasuryRequestCreateRequest(
+                RequestType.TOPUP, new BigDecimal("75.00"), "bank deposit", "BANK-REF-123");
+
+        TreasuryRequestResponse response = treasuryRequestService.createRequest(agentUserId, createRequest);
+
+        assertThat(response.externalReference()).isEqualTo("BANK-REF-123");
+    }
+
+    @Test
+    void createRequestAllowsNullExternalReference() {
+        when(agentRepository.findByUserId(agentUserId)).thenReturn(Optional.of(request.getAgent()));
+
+        TreasuryRequestCreateRequest createRequest = new TreasuryRequestCreateRequest(
+                RequestType.WITHDRAWAL, new BigDecimal("20.00"), "cash pickup", null);
+
+        TreasuryRequestResponse response = treasuryRequestService.createRequest(agentUserId, createRequest);
+
+        assertThat(response.externalReference()).isNull();
     }
 
     @Test

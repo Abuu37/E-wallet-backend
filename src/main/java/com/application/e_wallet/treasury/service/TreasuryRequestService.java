@@ -59,6 +59,7 @@ public class TreasuryRequestService {
                 .amount(request.amount())
                 .reason(request.reason())
                 .requestType(request.requestType())
+                .externalReference(request.externalReference())
                 .status(RequestStatus.PENDING)
                 .build();
 
@@ -207,7 +208,8 @@ public class TreasuryRequestService {
                 decidedBy != null ? decidedByName(decidedBy) : null,
                 treasuryRequest.getDecisionNote(),
                 treasuryRequest.getDecidedAt(),
-                treasuryRequest.getCreatedAt()
+                treasuryRequest.getCreatedAt(),
+                treasuryRequest.getExternalReference()
         );
     }
 

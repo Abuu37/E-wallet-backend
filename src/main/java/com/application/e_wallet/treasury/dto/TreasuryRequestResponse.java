@@ -22,6 +22,7 @@ public record TreasuryRequestResponse(
         String decidedByUserName,
         String decisionNote,
         OffsetDateTime decidedAt,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        String externalReference
 ) {
 }
