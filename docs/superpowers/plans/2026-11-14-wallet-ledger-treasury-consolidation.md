@@ -184,6 +184,16 @@ Expected: fails with a unique-violation on `uk_wallets_singleton_company_types`.
 Correction to the design doc's note that `COMPANY_UNALLOCATED`/`ESCROW_BANK`-tagged lines are "zero-transform": that was true before `ESCROW_BANK` became its own wallet row. Now, historical `ESCROW_BANK`-tagged lines (which used `company_master_wallet.id` as a placeholder, since no escrow row existed) must be redirected to the *new* `ESCROW_BANK` wallet's id, not left pointing at `COMPANY_MASTER_ACCOUNT`.
 
 ```sql
+-- One-time cleanup, found during execution: this specific row is a dangling reference
+-- from manual testing during the company-wallet feature's initial build (2026-11-08,
+-- described "10M has be allocated for the agent") — its account_ref_id matches no
+-- financial_accounts/wallets/agents/customers/users row at all, and there's no FK on
+-- this column anywhere in the schema to have caught it. Confirmed it has zero effect on
+-- any real balance (Step 3's backfill-sum check already passed without it). Deleted by
+-- exact id, not by pattern, so this is surgical and doesn't mask any other orphan — the
+-- Step 6 check below still hard-fails on any other unresolvable row, exactly as before.
+DELETE FROM transaction_journal_line WHERE id = '1b4ef1e7-76cc-4c7e-bd0d-48817f23ab3d';
+
 ALTER TABLE transaction_journal_line ADD COLUMN wallet_id UUID;
 
 -- AGENT_FLOAT-tagged lines pointed at financial_accounts.id.
