@@ -55,8 +55,7 @@ public class LedgerService {
         for (JournalLineRequest line : lines) {
             TransactionJournalLineEntity journalLine = TransactionJournalLineEntity.builder()
                     .journal(journal)
-                    .ledgerAccountType(line.ledgerAccountType())
-                    .accountRefId(line.accountRefId())
+                    .walletId(line.walletId())
                     .entryType(line.entryType())
                     .amount(line.amount())
                     .build();

@@ -2,7 +2,6 @@ package com.application.e_wallet.ledger.service;
 
 import com.application.e_wallet.ledger.dto.JournalLineRequest;
 import com.application.e_wallet.ledger.entity.EntryType;
-import com.application.e_wallet.ledger.entity.LedgerAccountType;
 import com.application.e_wallet.ledger.entity.TransactionJournalEntity;
 import com.application.e_wallet.ledger.entity.TransactionType;
 import com.application.e_wallet.ledger.repository.TransactionJournalRepository;
@@ -35,8 +34,8 @@ class LedgerServiceTest {
     void postJournalPersistsBalancedJournalWithLines() {
         UserEntity admin = UserEntity.builder().id(UUID.randomUUID()).build();
         List<JournalLineRequest> lines = List.of(
-                new JournalLineRequest(LedgerAccountType.ESCROW_BANK, UUID.randomUUID(), EntryType.DEBIT, new BigDecimal("100.00")),
-                new JournalLineRequest(LedgerAccountType.COMPANY_UNALLOCATED, UUID.randomUUID(), EntryType.CREDIT, new BigDecimal("100.00"))
+                new JournalLineRequest(UUID.randomUUID(), EntryType.DEBIT, new BigDecimal("100.00")),
+                new JournalLineRequest(UUID.randomUUID(), EntryType.CREDIT, new BigDecimal("100.00"))
         );
         when(transactionJournalRepository.existsByReferenceNumber(any())).thenReturn(false);
         when(transactionJournalRepository.save(any(TransactionJournalEntity.class)))
@@ -54,8 +53,8 @@ class LedgerServiceTest {
     void postJournalRejectsUnbalancedLines() {
         UserEntity admin = UserEntity.builder().id(UUID.randomUUID()).build();
         List<JournalLineRequest> lines = List.of(
-                new JournalLineRequest(LedgerAccountType.ESCROW_BANK, UUID.randomUUID(), EntryType.DEBIT, new BigDecimal("100.00")),
-                new JournalLineRequest(LedgerAccountType.COMPANY_UNALLOCATED, UUID.randomUUID(), EntryType.CREDIT, new BigDecimal("50.00"))
+                new JournalLineRequest(UUID.randomUUID(), EntryType.DEBIT, new BigDecimal("100.00")),
+                new JournalLineRequest(UUID.randomUUID(), EntryType.CREDIT, new BigDecimal("50.00"))
         );
 
         assertThatThrownBy(() -> ledgerService.postJournal(TransactionType.MINT_FLOAT, "bad", admin, lines))
@@ -67,8 +66,8 @@ class LedgerServiceTest {
     void postJournalRetriesReferenceNumberOnCollision() {
         UserEntity admin = UserEntity.builder().id(UUID.randomUUID()).build();
         List<JournalLineRequest> lines = List.of(
-                new JournalLineRequest(LedgerAccountType.ESCROW_BANK, UUID.randomUUID(), EntryType.DEBIT, new BigDecimal("10.00")),
-                new JournalLineRequest(LedgerAccountType.COMPANY_UNALLOCATED, UUID.randomUUID(), EntryType.CREDIT, new BigDecimal("10.00"))
+                new JournalLineRequest(UUID.randomUUID(), EntryType.DEBIT, new BigDecimal("10.00")),
+                new JournalLineRequest(UUID.randomUUID(), EntryType.CREDIT, new BigDecimal("10.00"))
         );
         when(transactionJournalRepository.existsByReferenceNumber(any())).thenReturn(true, false);
         when(transactionJournalRepository.save(any(TransactionJournalEntity.class)))

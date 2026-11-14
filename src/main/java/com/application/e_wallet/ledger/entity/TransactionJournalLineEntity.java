@@ -23,12 +23,8 @@ public class TransactionJournalLineEntity {
     @JoinColumn(name = "journal_id", nullable = false)
     private TransactionJournalEntity journal;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "ledger_account_type", nullable = false, length = 30)
-    private LedgerAccountType ledgerAccountType;
-
-    @Column(name = "account_ref_id", nullable = false)
-    private UUID accountRefId;
+    @Column(name = "wallet_id", nullable = false)
+    private UUID walletId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "entry_type", nullable = false, length = 10)
