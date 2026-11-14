@@ -113,11 +113,27 @@ Expected: zero rows. (If any print, the `UPDATE` list above missed a permission 
 ```sql
 ALTER TABLE users
     ADD COLUMN reference UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
-    ADD COLUMN username VARCHAR(100) NOT NULL UNIQUE,
+    ADD COLUMN username VARCHAR(100),
     ADD COLUMN last_login_at TIMESTAMP WITH TIME ZONE,
     ADD COLUMN role_id UUID;
 
--- Table is empty (fresh database) — safe to add role_id NOT NULL/FK with zero rows to violate it.
+-- Correction, found during execution: `users` is NOT empty on the freshly recreated database —
+-- V26 (already-existing, replayed as part of rebuilding today's shape) seeds one real row: the
+-- system/treasury user (id '11111111-1111-1111-1111-111111111111', BLOCKED, null pin_hash,
+-- can never log in) that owns the company-level wallets. It needs a real username and role_id
+-- before either column can be locked down. None of ADMIN/CASHIER/CUSTOMER/AGENT semantically fit
+-- a non-interactive internal principal, so give it its own role rather than forcing a wrong one:
+INSERT INTO roles (id, name, description, created_at, updated_at)
+VALUES (gen_random_uuid(), 'SYSTEM', 'Internal, non-interactive system principal — cannot log in', NOW(), NOW());
+
+UPDATE users
+SET username = 'system_treasury',
+    role_id = (SELECT id FROM roles WHERE name = 'SYSTEM')
+WHERE id = '11111111-1111-1111-1111-111111111111';
+
+-- Now safe: that was the only existing row, and it's populated.
+ALTER TABLE users ALTER COLUMN username SET NOT NULL;
+ALTER TABLE users ADD CONSTRAINT uk_users_username UNIQUE (username);
 ALTER TABLE users ALTER COLUMN role_id SET NOT NULL;
 ALTER TABLE users ADD CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id);
 
@@ -129,7 +145,7 @@ ALTER TABLE users
     DROP COLUMN last_name;
 ```
 
-(The `username NOT NULL UNIQUE` with no default works here specifically because the table has zero rows — this would fail on a database with existing users, which is exactly why Task 1's pre-step drops and recreates first.)
+(Every *other* table this plan touches — `customers`, `agents`, `staff`, `tariffs`, `transactions` — really is empty on the fresh database; `users` was the one exception, because it's the one table an earlier migration seeds a real row into. Worth remembering for any future "is this table really empty" assumption: check every migration that touches it, not just whether the database was just recreated.)
 
 - [ ] **Step 4: Write `V34__create_staff.sql`**
 
