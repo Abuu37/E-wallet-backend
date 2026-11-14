@@ -11,6 +11,7 @@ import java.util.UUID;
 
 public interface CompanyMasterWalletRepository extends JpaRepository<CompanyMasterWalletEntity, UUID> {
 
+    // to ensure mint/allocate/withdraw against the one GL control account.
     @Query("SELECT c FROM CompanyMasterWalletEntity c WHERE c.singletonKey = 1")
     Optional<CompanyMasterWalletEntity> findSingleton();
 

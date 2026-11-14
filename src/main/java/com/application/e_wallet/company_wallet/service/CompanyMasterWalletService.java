@@ -1,9 +1,12 @@
 package com.application.e_wallet.company_wallet.service;
 
+import com.application.e_wallet.agent.entity.FloatRequestStatus;
+import com.application.e_wallet.agent.repository.AgentFloatRequestRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.company_wallet.dto.AgentWithdrawRequest;
 import com.application.e_wallet.company_wallet.dto.AllocateFloatRequest;
 import com.application.e_wallet.company_wallet.dto.CompanyMasterWalletResponse;
+import com.application.e_wallet.company_wallet.dto.CompanyWalletMetrics;
 import com.application.e_wallet.company_wallet.dto.JournalLineResponse;
 import com.application.e_wallet.company_wallet.dto.MintFloatRequest;
 import com.application.e_wallet.company_wallet.dto.TransactionJournalResponse;
@@ -26,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.UUID;
 
@@ -38,7 +42,9 @@ public class CompanyMasterWalletService {
     private final UserRepository userRepository;
     private final TransactionJournalRepository transactionJournalRepository;
     private final LedgerService ledgerService;
+    private final AgentFloatRequestRepository agentFloatRequestRepository;
 
+    //=================== GET COMPANY MASTER WALLET =============
     @Transactional(readOnly = true)
     public CompanyMasterWalletResponse getWallet() {
         CompanyMasterWalletEntity wallet = companyMasterWalletRepository.findSingleton()
@@ -46,6 +52,7 @@ public class CompanyMasterWalletService {
         return toResponse(wallet);
     }
 
+    //============== GET JOURNAL HISTORY =================
     @Transactional(readOnly = true)
     public List<TransactionJournalResponse> getJournalHistory() {
         return transactionJournalRepository.findAllByOrderByCreatedAtDesc()
@@ -54,6 +61,7 @@ public class CompanyMasterWalletService {
                 .toList();
     }
 
+    // ============= MIST FLOAT REQUEST FROM THE BANK ==============
     @Transactional
     public CompanyMasterWalletResponse mint(MintFloatRequest request, UUID adminUserId) {
 
@@ -188,8 +196,24 @@ public class CompanyMasterWalletService {
                 wallet.getCurrency(),
                 wallet.getUnallocatedFloat(),
                 wallet.getTotalDistributedFloat(),
-                wallet.getEscrowBankAccountNo()
+                wallet.getEscrowBankAccountNo(),
+                buildMetrics()
         );
+    }
+
+    private CompanyWalletMetrics buildMetrics() {
+        return new CompanyWalletMetrics(
+                normalizeScale(agentFloatRequestRepository.sumAmountByStatus(FloatRequestStatus.PENDING)),
+                agentFloatRequestRepository.countByStatus(FloatRequestStatus.PENDING),
+                normalizeScale(agentFloatRequestRepository.sumAmountByStatus(FloatRequestStatus.APPROVED)),
+                agentFloatRequestRepository.countByStatus(FloatRequestStatus.APPROVED)
+        );
+    }
+
+    // SUM(...) over no matching rows comes back via the COALESCE fallback, whose literal
+    // scale isn't guaranteed to match the NUMERIC(19,2) column scale across JPA providers.
+    private static BigDecimal normalizeScale(BigDecimal amount) {
+        return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
     private TransactionJournalResponse toJournalResponse(TransactionJournalEntity journal) {

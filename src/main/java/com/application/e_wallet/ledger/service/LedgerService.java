@@ -25,13 +25,9 @@ public class LedgerService {
 
     private final TransactionJournalRepository transactionJournalRepository;
 
+    //======================= Real Gl that rejecting unbalanced debit/credit totals =================== //
     @Transactional
-    public TransactionJournalEntity postJournal(
-            TransactionType transactionType,
-            String description,
-            UserEntity createdBy,
-            List<JournalLineRequest> lines
-    ) {
+    public TransactionJournalEntity postJournal(TransactionType transactionType, String description, UserEntity createdBy, List<JournalLineRequest> lines) {
 
         BigDecimal totalDebits = BigDecimal.ZERO;
         BigDecimal totalCredits = BigDecimal.ZERO;

@@ -9,6 +9,7 @@ public record CompanyMasterWalletResponse(
         String currency,
         BigDecimal unallocatedFloat,
         BigDecimal totalDistributedFloat,
-        String escrowBankAccountNo
+        String escrowBankAccountNo,
+        CompanyWalletMetrics metrics
 ) {
 }

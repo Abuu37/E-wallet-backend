@@ -41,19 +41,10 @@ public class AgentEntity {
     private UUID id;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(
-            name = "user_id",
-            nullable = false,
-            unique = true
-    )
+    @JoinColumn( name = "user_id", nullable = false, unique = true)
     private UserEntity user;
 
-    @Column(
-            name = "agent_number",
-            nullable = false,
-            unique = true,
-            length = 30
-    )
+    @Column(name = "agent_number", nullable = false, unique = true, length = 30)
     private String agentNumber;
 
     @Enumerated(EnumType.STRING)
@@ -72,10 +63,7 @@ public class AgentEntity {
     private DistrictEntity district;
 
     // One agent has one float wallet.
-    @OneToOne(
-            mappedBy = "agent",
-            fetch = FetchType.LAZY
-    )
+    @OneToOne(mappedBy = "agent", fetch = FetchType.LAZY)
     private WalletEntity wallet;
 
     @Column(name = "created_at", nullable = false)
