@@ -80,10 +80,14 @@ UPDATE permissions SET module_reference = (SELECT id FROM modules WHERE name = '
     WHERE name IN ('CHECK_BALANCE', 'CUSTOMER_VIEW', 'CUSTOMER_UPDATE');
 UPDATE permissions SET module_reference = (SELECT id FROM modules WHERE name = 'WALLET')
     WHERE name IN ('WALLET_VIEW', 'COMPANY_WALLET_VIEW', 'WALLET_TO_WALLET_TRANSFER', 'WALLET_TO_BANK_TRANSFER');
+-- Corrected during execution: V6 seeded 'TRANSACTION_VIEW' and 'CASHIER_VIEW', but V11 (split
+-- TRANSACTION_VIEW into three granular permissions, deleting the coarse one) and V16 (renamed
+-- CASHIER_VIEW to AGENT_VIEW) both run after V6 and before this migration — the names below
+-- are what actually exists by the time V32 runs, confirmed by querying the rebuilt database.
 UPDATE permissions SET module_reference = (SELECT id FROM modules WHERE name = 'TRANSACTION')
-    WHERE name IN ('TRANSACTION_VIEW', 'TOPUP_CREATE', 'TOPUP_VIEW', 'WITHDRAWAL_CREATE');
+    WHERE name IN ('TRANSACTION_VIEW_ALL', 'TRANSACTION_VIEW_OWN', 'TRANSACTION_VIEW_DETAILS', 'TOPUP_CREATE', 'TOPUP_VIEW', 'WITHDRAWAL_CREATE');
 UPDATE permissions SET module_reference = (SELECT id FROM modules WHERE name = 'AGENT')
-    WHERE name IN ('CASHIER_VIEW', 'FLOAT_VIEW', 'REQUEST_FLOAT', 'FLOAT_MANAGE');
+    WHERE name IN ('AGENT_VIEW', 'FLOAT_VIEW', 'REQUEST_FLOAT', 'FLOAT_MANAGE');
 UPDATE permissions SET module_reference = (SELECT id FROM modules WHERE name = 'LOAN')
     WHERE name IN ('LOAN_VIEW', 'LOAN_APPLY', 'LOAN_APPROVE', 'LOAN_REPAY');
 UPDATE permissions SET module_reference = (SELECT id FROM modules WHERE name = 'FINANCE')
