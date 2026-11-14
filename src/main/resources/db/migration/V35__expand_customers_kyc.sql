@@ -1,0 +1,10 @@
+ALTER TABLE customers
+    ADD COLUMN reference UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    ADD COLUMN first_name VARCHAR(100) NOT NULL,
+    ADD COLUMN middle_name VARCHAR(100),
+    ADD COLUMN last_name VARCHAR(100) NOT NULL,
+    ADD COLUMN email VARCHAR(255) NOT NULL,
+    ADD COLUMN phone_number VARCHAR(30) NOT NULL,
+    ADD COLUMN nida_number VARCHAR(30) NOT NULL,
+    ADD COLUMN date_of_birth DATE NOT NULL,
+    ADD COLUMN address VARCHAR(255) NOT NULL;
