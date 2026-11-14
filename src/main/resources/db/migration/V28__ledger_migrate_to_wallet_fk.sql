@@ -3,10 +3,17 @@
 -- described "10M has be allocated for the agent") — its account_ref_id matches no
 -- financial_accounts/wallets/agents/customers/users row at all, and there's no FK on
 -- this column anywhere in the schema to have caught it. Confirmed it has zero effect on
--- any real balance (Step 3's backfill-sum check already passed without it). Deleted by
--- exact id, not by pattern, so this is surgical and doesn't mask any other orphan — the
--- Step 6 check below still hard-fails on any other unresolvable row, exactly as before.
-DELETE FROM transaction_journal_line WHERE id = '1b4ef1e7-76cc-4c7e-bd0d-48817f23ab3d';
+-- any real balance (Step 3's backfill-sum check already passed without it).
+--
+-- Corrected during the final whole-branch review: deleting only this one leg leaves its
+-- sibling COMPANY_UNALLOCATED/COMPANY_MASTER_ACCOUNT leg behind with no matching credit —
+-- an unbalanced journal, confirmed live in the dev DB (10,000,000 DEBIT, 0 CREDIT) after
+-- the original single-line DELETE ran. Delete the whole journal — both its remaining line
+-- and its header — by exact journal id instead, so no one-legged entry survives. Still
+-- surgical (exact id, not a pattern) — the Step 6 check below still hard-fails on any
+-- other unresolvable row, exactly as before.
+DELETE FROM transaction_journal_line WHERE journal_id = 'a012039e-57c0-4803-a6a1-f99f36e9b099';
+DELETE FROM transaction_journal WHERE id = 'a012039e-57c0-4803-a6a1-f99f36e9b099';
 
 ALTER TABLE transaction_journal_line ADD COLUMN wallet_id UUID;
 

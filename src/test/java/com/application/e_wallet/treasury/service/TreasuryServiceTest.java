@@ -116,6 +116,8 @@ class TreasuryServiceTest {
                 && lines.stream().anyMatch(l -> l.walletId().equals(escrowWallet.getId()) && l.entryType() == EntryType.DEBIT)
                 && lines.stream().anyMatch(l -> l.walletId().equals(companyWallet.getId()) && l.entryType() == EntryType.CREDIT)
         ));
+        assertThat(companyWallet.getBalance()).isEqualTo(new BigDecimal("1200.00"));
+        assertThat(escrowWallet.getBalance()).isEqualTo(new BigDecimal("1200.00"));
     }
 
     @Test
@@ -173,6 +175,12 @@ class TreasuryServiceTest {
         assertThat(agentFloatWallet.getBalance()).isEqualTo(new BigDecimal("350.00"));
         verify(walletRepository).save(companyWallet);
         verify(walletRepository).save(agentFloatWallet);
+        verify(ledgerService).postJournal(eq(TransactionType.TOPUP_FLOAT), any(), eq(admin), argThat(lines ->
+                lines.size() == 2
+                && lines.stream().map(JournalLineRequest::walletId).distinct().count() == 2
+                && lines.stream().anyMatch(l -> l.walletId().equals(companyWallet.getId()) && l.entryType() == EntryType.DEBIT)
+                && lines.stream().anyMatch(l -> l.walletId().equals(agentFloatWallet.getId()) && l.entryType() == EntryType.CREDIT)
+        ));
     }
 
     @Test
@@ -200,6 +208,12 @@ class TreasuryServiceTest {
         assertThat(agentFloatWallet.getBalance()).isEqualTo(new BigDecimal("60.00"));
         verify(walletRepository).save(companyWallet);
         verify(walletRepository).save(agentFloatWallet);
+        verify(ledgerService).postJournal(eq(TransactionType.AGENT_WITHDRAW), any(), eq(admin), argThat(lines ->
+                lines.size() == 2
+                && lines.stream().map(JournalLineRequest::walletId).distinct().count() == 2
+                && lines.stream().anyMatch(l -> l.walletId().equals(agentFloatWallet.getId()) && l.entryType() == EntryType.DEBIT)
+                && lines.stream().anyMatch(l -> l.walletId().equals(companyWallet.getId()) && l.entryType() == EntryType.CREDIT)
+        ));
     }
 
     @Test
