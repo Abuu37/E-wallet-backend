@@ -5,13 +5,10 @@ import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.repository.CustomerRepository;
-import com.application.e_wallet.financial_account.entity.FinancialAccountEntity;
-import com.application.e_wallet.financial_account.entity.FinancialAccountStatus;
-import com.application.e_wallet.financial_account.entity.FinancialAccountType;
-import com.application.e_wallet.financial_account.repository.FinancialAccountRepository;
 import com.application.e_wallet.wallet.dto.WalletResponse;
 import com.application.e_wallet.wallet.entity.WalletEntity;
 import com.application.e_wallet.wallet.entity.WalletStatus;
+import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,43 +22,31 @@ import java.util.UUID;
 public class WalletService {
 
     private final WalletRepository walletRepository;
-    private final FinancialAccountRepository financialAccountRepository;
     private final CustomerRepository customerRepository;
     private final AgentRepository agentRepository;
 
     @Transactional
     public WalletEntity createWallet(CustomerEntity customer) {
 
-        if (walletRepository.existsByCustomerId(customer.getId())) {
+        if (walletRepository.existsByUserIdAndWalletType(customer.getUser().getId(), WalletType.CUSTOMER_MAIN)) {
             throw new IllegalStateException(
                     "Customer already has a wallet"
             );
         }
 
+        String phone = customer.getUser().getPhone();
 
         WalletEntity wallet = WalletEntity.builder()
-                .customer(customer)
-                .walletNumber(customer.getUser().getPhone())
+                .user(customer.getUser())
+                .walletType(WalletType.CUSTOMER_MAIN)
+                .walletNumber(phone)
+                .accountNumber(phone)
+                .balance(BigDecimal.ZERO)
                 .currency("TZS")
                 .status(WalletStatus.ACTIVE)
                 .build();
 
-        wallet = walletRepository.save(wallet);
-
-        FinancialAccountEntity account = FinancialAccountEntity.builder()
-                .accountNumber(customer.getUser().getPhone())
-                .accountType(FinancialAccountType.CUSTOMER_WALLET)
-                .currency("TZS")
-                .currentBalance(BigDecimal.ZERO)
-                .status(FinancialAccountStatus.ACTIVE)
-                .wallet(wallet)
-                .build();
-
-        financialAccountRepository.save(account);
-
-        wallet.setFinancialAccount(account);
-
-        return wallet;
+        return walletRepository.save(wallet);
     }
 
     @Transactional
@@ -78,7 +63,8 @@ public class WalletService {
 
     private WalletResponse walletForCustomer(CustomerEntity customer) {
 
-        WalletEntity wallet = walletRepository.findByCustomerId(customer.getId())
+        WalletEntity wallet = walletRepository.findByUserIdAndWalletType(
+                        customer.getUser().getId(), WalletType.CUSTOMER_MAIN)
                 .orElseThrow(() ->
                         new BadRequestException(
                                 "No wallet is associated with this account."
@@ -96,14 +82,15 @@ public class WalletService {
                                 "No wallet found for wallet number: " + walletNumber
                         ));
 
-        String ownerType = wallet.getCustomer() != null ? "CUSTOMER" : "AGENT";
-
-        return toResponse(wallet, ownerType);
+        return toResponse(wallet, ownerTypeFor(wallet.getWalletType()));
     }
 
     private WalletResponse walletForAgent(AgentEntity agent) {
 
-        WalletEntity wallet = walletRepository.findByAgentId(agent.getId())
+        // An agent now has two wallets. "My wallet" means the float wallet the agent
+        // operates with; AGENT_COMMISSION is not exposed through this endpoint.
+        WalletEntity wallet = walletRepository.findByUserIdAndWalletType(
+                        agent.getUser().getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() ->
                         new BadRequestException(
                                 "No wallet is associated with this account."
@@ -114,20 +101,22 @@ public class WalletService {
 
     private WalletResponse toResponse(WalletEntity wallet, String ownerType) {
 
-        FinancialAccountEntity account = financialAccountRepository.findByWalletId(wallet.getId())
-                .orElseThrow(() ->
-                        new BadRequestException(
-                                "No financial account is associated with this wallet."
-                        ));
-
         return new WalletResponse(
                 wallet.getId(),
                 ownerType,
                 wallet.getWalletNumber(),
                 wallet.getCurrency(),
                 wallet.getStatus(),
-                account.getAccountNumber(),
-                account.getCurrentBalance()
+                wallet.getAccountNumber(),
+                wallet.getBalance()
         );
+    }
+
+    private String ownerTypeFor(WalletType walletType) {
+        return switch (walletType) {
+            case CUSTOMER_MAIN -> "CUSTOMER";
+            case AGENT_FLOAT, AGENT_COMMISSION -> "AGENT";
+            default -> "COMPANY";
+        };
     }
 }

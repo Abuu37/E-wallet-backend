@@ -1,11 +1,10 @@
 package com.application.e_wallet.wallet.entity;
 
-import com.application.e_wallet.agent.entity.AgentEntity;
-import com.application.e_wallet.customer.entity.CustomerEntity;
-import com.application.e_wallet.financial_account.entity.FinancialAccountEntity;
+import com.application.e_wallet.user.entity.UserEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -13,18 +12,6 @@ import java.util.UUID;
 @Table(
         name = "wallets",
         indexes = {
-                @Index(
-                        name = "idx_wallet_customer_id",
-                        columnList = "customer_id",
-                        unique = true
-                ),
-
-                @Index(
-                        name = "idx_wallet_agent_id",
-                        columnList = "agent_id",
-                        unique = true
-
-                ),
                 @Index(
                         name = "idx_wallet_wallet_number",
                         columnList = "wallet_number",
@@ -44,19 +31,13 @@ public class WalletEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = true)
-    @JoinColumn(
-            name = "customer_id",
-            unique = true
-    )
-    private CustomerEntity customer;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private UserEntity user;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = true)
-    @JoinColumn(
-            name = "agent_id",
-            unique = true
-    )
-    private AgentEntity agent;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "wallet_type", nullable = false, length = 30)
+    private WalletType walletType;
 
     @Column(
             name = "wallet_number",
@@ -66,6 +47,12 @@ public class WalletEntity {
     )
     private String walletNumber;
 
+    @Column(name = "account_number", nullable = false, unique = true, length = 30)
+    private String accountNumber;
+
+    @Column(nullable = false, precision = 19, scale = 2)
+    private BigDecimal balance;
+
     @Column(nullable = false, length = 3)
     private String currency;
 
@@ -73,15 +60,11 @@ public class WalletEntity {
     @Column(nullable = false, length = 20)
     private WalletStatus status;
 
-    @OneToOne(
-            mappedBy = "wallet",
-            fetch = FetchType.LAZY,
-            cascade = {
-                    CascadeType.PERSIST,
-                    CascadeType.MERGE
-            }
-    )
-    private FinancialAccountEntity financialAccount;
+    @Column(nullable = false)
+    private Long version;
+
+    @Column(name = "external_reference")
+    private String externalReference;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
@@ -101,6 +84,14 @@ public class WalletEntity {
 
         if (currency == null) {
             currency = "TZS";
+        }
+
+        if (balance == null) {
+            balance = BigDecimal.ZERO;
+        }
+
+        if (version == null) {
+            version = 0L;
         }
     }
     @PreUpdate
