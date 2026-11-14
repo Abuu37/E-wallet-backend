@@ -12,6 +12,9 @@ import java.time.LocalDate;
 public record AgentCreationRequest(
 
         @NotBlank
+        String username,
+
+        @NotBlank
         String firstName,
 
         @NotBlank
@@ -38,7 +41,13 @@ public record AgentCreationRequest(
         String regionId,
 
         @NotBlank
-        String districtId
+        String districtId,
+
+        @NotBlank
+        String businessName,
+
+        @NotBlank
+        String tinNumber
 
 ) {
 }

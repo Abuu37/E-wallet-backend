@@ -1,7 +1,6 @@
 package com.application.e_wallet.security.jwt;
 
 import com.application.e_wallet.permission.entity.PermissionEntity;
-import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.user.entity.UserEntity;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -18,7 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -85,12 +83,9 @@ public class JwtService {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMillis);
 
-        String roles = user.getRoles().stream()
-                .map(RoleEntity::getName)
-                .collect(Collectors.joining(","));
+        String roles = user.getRole().getName();
 
-        List<String> permissions = user.getRoles().stream()
-                .flatMap(role -> role.getPermissions().stream())
+        List<String> permissions = user.getRole().getPermissions().stream()
                 .map(PermissionEntity::getName)
                 .distinct()
                 .toList();

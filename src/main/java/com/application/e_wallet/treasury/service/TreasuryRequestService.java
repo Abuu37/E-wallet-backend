@@ -9,6 +9,8 @@ import com.application.e_wallet.treasury.dto.TreasuryRequestResponse;
 import com.application.e_wallet.treasury.entity.RequestStatus;
 import com.application.e_wallet.treasury.entity.RequestType;
 import com.application.e_wallet.treasury.entity.TreasuryRequestEntity;
+import com.application.e_wallet.staff.entity.StaffEntity;
+import com.application.e_wallet.staff.repository.StaffRepository;
 import com.application.e_wallet.treasury.repository.TreasuryRequestRepository;
 import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.user.repository.UserRepository;
@@ -33,6 +35,7 @@ public class TreasuryRequestService {
     private final TreasuryRequestRepository treasuryRequestRepository;
     private final AgentRepository agentRepository;
     private final UserRepository userRepository;
+    private final StaffRepository staffRepository;
     private final WalletRepository walletRepository;
     private final TreasuryService treasuryService;
 
@@ -192,7 +195,7 @@ public class TreasuryRequestService {
                 treasuryRequest.getRequestType().name(),
                 agent.getId(),
                 agent.getAgentNumber(),
-                fullName(user),
+                fullName(agent.getFirstName(), agent.getMiddleName(), agent.getLastName()),
                 agent.getRegion().getName(),
                 agent.getDistrict().getName(),
                 user.getPhone(),
@@ -201,15 +204,25 @@ public class TreasuryRequestService {
                 treasuryRequest.getAmount(),
                 treasuryRequest.getReason(),
                 treasuryRequest.getStatus().name(),
-                decidedBy != null ? fullName(decidedBy) : null,
+                decidedBy != null ? decidedByName(decidedBy) : null,
                 treasuryRequest.getDecisionNote(),
                 treasuryRequest.getDecidedAt(),
                 treasuryRequest.getCreatedAt()
         );
     }
 
-    private static String fullName(UserEntity user) {
-        return Stream.of(user.getFirstName(), user.getMiddleName(), user.getLastName())
+    // The deciding admin's name now lives on their StaffEntity profile, not UserEntity -
+    // every admin/staff user is expected to have one (seeded at bootstrap, or onboarded
+    // through StaffService). Falls back to an empty name rather than failing the request
+    // if that invariant is ever violated.
+    private String decidedByName(UserEntity decidedBy) {
+        return staffRepository.findByUserId(decidedBy.getId())
+                .map(staff -> fullName(staff.getFirstName(), staff.getMiddleName(), staff.getLastName()))
+                .orElse("");
+    }
+
+    private static String fullName(String firstName, String middleName, String lastName) {
+        return Stream.of(firstName, middleName, lastName)
                 .filter(part -> part != null && !part.isBlank())
                 .collect(Collectors.joining(" "));
     }

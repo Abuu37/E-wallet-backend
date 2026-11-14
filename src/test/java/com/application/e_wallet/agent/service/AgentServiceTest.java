@@ -2,6 +2,7 @@ package com.application.e_wallet.agent.service;
 
 import com.application.e_wallet.agent.dto.AgentCreationRequest;
 import com.application.e_wallet.agent.entity.AgentEntity;
+import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.entity.Gender;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.auth.repository.UserSessionRepository;
@@ -63,13 +64,17 @@ class AgentServiceTest {
     @Test
     void createAgentCreatesBothFloatAndCommissionWallets() {
         AgentCreationRequest request = new AgentCreationRequest(
-                "Jane", "M", "Doe", "jane.doe@example.com", "0712345678",
-                Gender.FEMALE, LocalDate.of(1995, 1, 1), "TZ01", "TZ0101"
+                "jane.doe", "Jane", "M", "Doe", "jane.doe@example.com", "0712345678",
+                Gender.FEMALE, LocalDate.of(1995, 1, 1), "TZ01", "TZ0101",
+                "Jane's Shop", "TIN-12345"
         );
 
         RoleEntity agentRole = RoleEntity.builder().id(UUID.randomUUID()).name("AGENT").build();
         RegionEntity region = RegionEntity.builder().id(UUID.randomUUID()).externalId("TZ01").name("Dar").build();
         DistrictEntity district = DistrictEntity.builder().id(UUID.randomUUID()).externalId("TZ0101").region(region).name("Ilala").build();
+
+        UUID adminUserId = UUID.randomUUID();
+        UserEntity admin = UserEntity.builder().id(adminUserId).build();
 
         lenient().when(userRepository.existsByEmail(anyString())).thenReturn(false);
         lenient().when(userRepository.existsByPhone(anyString())).thenReturn(false);
@@ -79,6 +84,7 @@ class AgentServiceTest {
         when(districtRepository.findByExternalId("TZ0101")).thenReturn(Optional.of(district));
         when(otpGenerator.generate(4)).thenReturn("1234");
         when(pinEncoder.encode(anyString())).thenReturn("hashed-pin");
+        when(userRepository.findById(adminUserId)).thenReturn(Optional.of(admin));
 
         UUID userId = UUID.randomUUID();
         when(userRepository.save(any())).thenAnswer(inv -> {
@@ -98,7 +104,9 @@ class AgentServiceTest {
 
         when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        agentService.createAgent(request);
+        var response = agentService.createAgent(adminUserId, request);
+
+        assertThat(response.status()).isEqualTo(AgentStatus.ACTIVE.name());
 
         ArgumentCaptor<WalletEntity> captor = ArgumentCaptor.forClass(WalletEntity.class);
         verify(walletRepository, org.mockito.Mockito.times(2)).save(captor.capture());
@@ -108,15 +116,16 @@ class AgentServiceTest {
     }
 
     @Test
-    void deactivateAgentClosesBothWallets() {
+    void deactivateAgentClosesBothWalletsAndSetsBothStatuses() {
         UUID agentId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
 
         UserEntity user = UserEntity.builder().id(userId).status(UserStatus.ACTIVE).build();
-        AgentEntity agent = AgentEntity.builder().id(agentId).user(user).build();
+        AgentEntity agent = AgentEntity.builder().id(agentId).user(user).agentStatus(AgentStatus.ACTIVE).build();
 
         when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
         when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(agentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         WalletEntity floatWallet = WalletEntity.builder()
                 .id(UUID.randomUUID()).user(user).walletType(WalletType.AGENT_FLOAT)
@@ -132,6 +141,9 @@ class AgentServiceTest {
         when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         agentService.deactivateAgent(agentId);
+
+        assertThat(user.getStatus()).isEqualTo(UserStatus.DISABLED);
+        assertThat(agent.getAgentStatus()).isEqualTo(AgentStatus.DEACTIVATED);
 
         verify(walletRepository, org.mockito.Mockito.times(2))
                 .save(org.mockito.ArgumentMatchers.argThat(w -> w.getStatus() == WalletStatus.CLOSED));

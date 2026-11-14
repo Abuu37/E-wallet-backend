@@ -39,6 +39,11 @@ public class PermissionEntity {
     @ManyToMany(mappedBy = "permissions")
     private Set<RoleEntity> roles = new HashSet<>();
 
+    // Plain UUID for now - the ModuleEntity/module-grouping application code lands in a
+    // later task; this just needs the column mapped so the entity matches the schema.
+    @Column(name = "module_reference", nullable = false)
+    private UUID moduleReference;
+
     @Column(name ="created_at", nullable = false)
     private Instant createdAt;
 

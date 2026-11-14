@@ -1,7 +1,6 @@
 package com.application.e_wallet.role.entity;
 
 import com.application.e_wallet.permission.entity.PermissionEntity;
-import com.application.e_wallet.user.entity.UserEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -34,9 +33,9 @@ public class RoleEntity {
     @Column( name = "description", nullable = false)
     private String description;
 
-    @ManyToMany(mappedBy = "roles")
-    @Builder.Default
-    private Set<UserEntity> users = new HashSet<>();
+    // Inverse side of UserEntity.role (now a single @ManyToOne) dropped: nothing in the
+    // codebase read RoleEntity.getUsers() before this change (confirmed by grep), and a
+    // one-to-many collection of every user on a role isn't needed yet.
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

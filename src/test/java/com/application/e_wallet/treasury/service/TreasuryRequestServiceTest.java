@@ -5,6 +5,9 @@ import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.location.entity.DistrictEntity;
 import com.application.e_wallet.location.entity.RegionEntity;
+import com.application.e_wallet.staff.entity.StaffEntity;
+import com.application.e_wallet.staff.entity.StaffStatus;
+import com.application.e_wallet.staff.repository.StaffRepository;
 import com.application.e_wallet.treasury.dto.TreasuryRequestDecisionRequest;
 import com.application.e_wallet.treasury.entity.RequestStatus;
 import com.application.e_wallet.treasury.entity.RequestType;
@@ -41,6 +44,7 @@ class TreasuryRequestServiceTest {
     @Mock private TreasuryRequestRepository treasuryRequestRepository;
     @Mock private AgentRepository agentRepository;
     @Mock private UserRepository userRepository;
+    @Mock private StaffRepository staffRepository;
     @Mock private WalletRepository walletRepository;
     @Mock private TreasuryService treasuryService;
     @InjectMocks private TreasuryRequestService treasuryRequestService;
@@ -60,8 +64,16 @@ class TreasuryRequestServiceTest {
         agentUserId = UUID.randomUUID();
         amount = new BigDecimal("50.00");
 
-        UserEntity admin = UserEntity.builder().id(adminUserId).firstName("Admin").middleName("M").lastName("User").build();
-        UserEntity agentUser = UserEntity.builder().id(agentUserId).firstName("Agent").middleName("M").lastName("Doe").phone("255700000000").build();
+        UserEntity admin = UserEntity.builder().id(adminUserId).build();
+        UserEntity agentUser = UserEntity.builder().id(agentUserId).phone("255700000000").build();
+
+        StaffEntity adminStaff = StaffEntity.builder()
+                .user(admin)
+                .firstName("Admin")
+                .middleName("M")
+                .lastName("User")
+                .status(StaffStatus.ACTIVE)
+                .build();
 
         RegionEntity region = RegionEntity.builder().id(UUID.randomUUID()).name("Dar es Salaam").build();
         DistrictEntity district = DistrictEntity.builder().id(UUID.randomUUID()).name("Ilala").build();
@@ -70,6 +82,9 @@ class TreasuryRequestServiceTest {
                 .id(agentId)
                 .user(agentUser)
                 .agentNumber("AG-001")
+                .firstName("Agent")
+                .middleName("M")
+                .lastName("Doe")
                 .region(region)
                 .district(district)
                 .build();
@@ -95,6 +110,7 @@ class TreasuryRequestServiceTest {
         lenient().when(treasuryRequestRepository.findByRequestId(requestId)).thenReturn(Optional.of(request));
         lenient().when(treasuryRequestRepository.findById(requestId)).thenReturn(Optional.of(request));
         lenient().when(userRepository.findById(adminUserId)).thenReturn(Optional.of(admin));
+        lenient().when(staffRepository.findByUserId(adminUserId)).thenReturn(Optional.of(adminStaff));
         lenient().when(treasuryRequestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(walletRepository.findByUserIdAndWalletType(agentUserId, WalletType.AGENT_FLOAT))
                 .thenReturn(Optional.of(agentFloatWallet));

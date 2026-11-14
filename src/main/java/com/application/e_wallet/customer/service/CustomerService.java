@@ -1,6 +1,7 @@
 package com.application.e_wallet.customer.service;
 
 
+import com.application.e_wallet.auth.dto.CustomerRegistrationRequest;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.entity.CustomerStatus;
@@ -19,7 +20,7 @@ public class CustomerService {
     private final CustomerRepository customerRepository;
 
     @Transactional
-    public CustomerEntity createCustomer(UserEntity user){
+    public CustomerEntity createCustomer(UserEntity user, CustomerRegistrationRequest request){
 
         if (customerRepository.existsByUserId(user.getId())) {
             throw new DuplicationResourceException(
@@ -27,10 +28,20 @@ public class CustomerService {
             );
         }
 
+        String middleName = request.getMiddleName() != null ? request.getMiddleName().trim() : "";
+
         CustomerEntity customer = CustomerEntity.builder()
                 .user(user)
                 .customerNumber(generateCustomerNumber())
                 .status(CustomerStatus.PENDING)
+                .firstName(request.getFirstName().trim())
+                .middleName(middleName)
+                .lastName(request.getLastName().trim())
+                .email(user.getEmail())
+                .phoneNumber(user.getPhone())
+                .nidaNumber(request.getNidaNumber().trim())
+                .dateOfBirth(request.getDateOfBirth())
+                .address(request.getAddress().trim())
                 .build();
 
         return customerRepository.save(customer);

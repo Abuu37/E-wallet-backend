@@ -2,6 +2,9 @@ package com.application.e_wallet.security;
 
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.role.repository.RoleRepository;
+import com.application.e_wallet.staff.entity.StaffEntity;
+import com.application.e_wallet.staff.entity.StaffStatus;
+import com.application.e_wallet.staff.repository.StaffRepository;
 import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.user.entity.UserStatus;
 import com.application.e_wallet.user.repository.UserRepository;
@@ -14,6 +17,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -22,9 +27,18 @@ public class DataInitializer implements CommandLineRunner {
 
     private static final String ADMIN_ROLE = "ADMIN";
 
+    // Hardcoded bootstrap-only job title - this seeds exactly one row, so a dedicated
+    // .env property isn't worth it. Flag to the project owner if this should become
+    // configurable instead.
+    private static final String BOOTSTRAP_JOB_TITLE = "System Administrator";
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final StaffRepository staffRepository;
     private final PasswordEncoder pinEncoder;
+
+    @Value("${app.initial-admin.username}")
+    private String username;
 
     @Value("${app.initial-admin.first-name}")
     private String firstName;
@@ -65,19 +79,42 @@ public class DataInitializer implements CommandLineRunner {
                         ));
 
         UserEntity admin = UserEntity.builder()
-                .firstName(firstName)
-                .middleName(middleName)
-                .lastName(lastName)
+                .loginUsername(username)
                 .email(email)
                 .phone(phone)
                 .pinHash(pinEncoder.encode(pin))
                 .status(UserStatus.ACTIVE)
+                .role(adminRole)
                 .build();
 
-        admin.getRoles().add(adminRole);
+        UserEntity savedAdmin = userRepository.save(admin);
 
-        userRepository.save(admin);
+        // Bootstrap record - no acting admin created it, so createdBy stays null.
+        StaffEntity staff = StaffEntity.builder()
+                .user(savedAdmin)
+                .staffNo(generateStaffNumber())
+                .jobTitle(BOOTSTRAP_JOB_TITLE)
+                .firstName(firstName)
+                .middleName(middleName)
+                .lastName(lastName)
+                .email(email)
+                .phoneNumber(phone)
+                .createdBy(null)
+                .status(StaffStatus.ACTIVE)
+                .build();
+
+        staffRepository.save(staff);
 
         log.info("Initial admin account created (email={})", email);
+    }
+
+    private String generateStaffNumber() {
+        String staffNo;
+        do {
+            staffNo = "STF-" + UUID.randomUUID().toString().replace("-", "")
+                    .substring(0, 12).toUpperCase();
+        } while (staffRepository.existsByStaffNo(staffNo));
+
+        return staffNo;
     }
 }

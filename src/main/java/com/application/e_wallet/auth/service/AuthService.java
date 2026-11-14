@@ -79,22 +79,17 @@ public class AuthService {
                                 "CUSTOMER role not found"
                         ));
 
-        String middleName = request.getMiddleName() != null ? request.getMiddleName().trim() : "";
-
         UserEntity user = UserEntity.builder()
-                .firstName(request.getFirstName().trim())
-                .middleName(middleName)
-                .lastName(request.getLastName().trim())
+                .loginUsername(request.getUsername().trim())
                 .email(request.getEmail().trim().toLowerCase())
                 .phone(normalizedPhone)
                 .status(UserStatus.PENDING)
+                .role(customerRole)
                 .build();
-
-        user.getRoles().add(customerRole);
 
         UserEntity savedUser = userRepository.save(user);  //======== user save in database ======
 
-        customerService.createCustomer(savedUser); //=== Customer account  created ====
+        customerService.createCustomer(savedUser, request); //=== Customer account  created ====
 
         eventPublisher.publishEvent(new UserRegisteredEvent(savedUser.getId(), savedUser.getEmail()));
 
@@ -155,9 +150,9 @@ public class AuthService {
 
         return UserProfileResponse.builder()
                 .userId(user.getId())
-                .firstName(user.getFirstName())
-                .middleName(user.getMiddleName())
-                .lastName(user.getLastName())
+                .firstName(customer.getFirstName())
+                .middleName(customer.getMiddleName())
+                .lastName(customer.getLastName())
                 .email(user.getEmail())
                 .phone(user.getPhone())
                 .status(user.getStatus())
@@ -186,6 +181,9 @@ public class AuthService {
                     "Invalid credentials"
             );
         }
+
+        user.setLastLoginAt(Instant.now());
+        userRepository.save(user);
 
         String refreshToken = issueSession(user);
 
@@ -264,12 +262,9 @@ public class AuthService {
     private LoginResponse buildLoginResponse(UserEntity user, String refreshToken) {
         String accessToken = jwtService.generateAccessToken(user);
 
-        List<String> roles = user.getRoles().stream()
-                .map(RoleEntity::getName)
-                .toList();
+        List<String> roles = List.of(user.getRole().getName());
 
-        List<String> permissions = user.getRoles().stream()
-                .flatMap(role -> role.getPermissions().stream())
+        List<String> permissions = user.getRole().getPermissions().stream()
                 .map(PermissionEntity::getName)
                 .distinct()
                 .toList();

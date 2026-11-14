@@ -39,12 +39,44 @@ public class AgentEntity {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
+    @Column(name = "reference", nullable = false, unique = true)
+    private UUID reference;
+
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn( name = "user_id", nullable = false, unique = true)
     private UserEntity user;
 
     @Column(name = "agent_number", nullable = false, unique = true, length = 30)
     private String agentNumber;
+
+    @Column(name = "first_name", nullable = false, length = 100)
+    private String firstName;
+
+    @Column(name = "middle_name", length = 100)
+    private String middleName;
+
+    @Column(name = "last_name", nullable = false, length = 100)
+    private String lastName;
+
+    @Column(name = "email", nullable = false, length = 255)
+    private String email;
+
+    @Column(name = "phone_number", nullable = false, length = 30)
+    private String phoneNumber;
+
+    @Column(name = "business_name", nullable = false, length = 150)
+    private String businessName;
+
+    @Column(name = "tin_number", nullable = false, length = 30)
+    private String tinNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "agent_status", nullable = false, length = 20)
+    private AgentStatus agentStatus;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by")
+    private UserEntity createdBy;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gender", nullable = false, length = 10)
@@ -73,6 +105,14 @@ public class AgentEntity {
 
         this.createdAt = now;
         this.updatedAt = now;
+
+        if (this.reference == null) {
+            this.reference = UUID.randomUUID();
+        }
+
+        if (this.agentStatus == null) {
+            this.agentStatus = AgentStatus.ACTIVE;
+        }
     }
 
     @PreUpdate

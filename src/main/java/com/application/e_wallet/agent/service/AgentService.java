@@ -8,6 +8,7 @@ import com.application.e_wallet.agent.dto.AgentUpdateRequest;
 import com.application.e_wallet.agent.dto.AgentUpdateResponse;
 import com.application.e_wallet.agent.dto.FloatHealth;
 import com.application.e_wallet.agent.entity.AgentEntity;
+import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.auth.repository.UserSessionRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
@@ -58,7 +59,7 @@ public class AgentService {
 
     //======================== CREATE AN AGENT ==================== //
     @Transactional
-    public AgentOnboardResponse createAgent(AgentCreationRequest request) {
+    public AgentOnboardResponse createAgent(UUID adminUserId, AgentCreationRequest request) {
 
         String email = request.email().trim().toLowerCase();
         String normalizedPhone = phoneNumberNormalizer.normalize(request.phone());
@@ -84,26 +85,35 @@ public class AgentService {
             throw new BadRequestException("districtId does not belong to regionId");
         }
 
+        UserEntity admin = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user not found"));
+
         String middleName = request.middleName() != null ? request.middleName().trim() : "";
         String oneTimePin = otpGenerator.generate(ONE_TIME_PIN_LENGTH);
 
         UserEntity user = UserEntity.builder()
-                .firstName(request.firstName().trim())
-                .middleName(middleName)
-                .lastName(request.lastName().trim())
+                .loginUsername(request.username().trim())
                 .email(email)
                 .phone(normalizedPhone)
                 .pinHash(pinEncoder.encode(oneTimePin))
                 .status(UserStatus.PIN_CHANGE_REQUIRED)
+                .role(agentRole)
                 .build();
-
-        user.getRoles().add(agentRole);
 
         UserEntity savedUser = userRepository.save(user); //======== user saved in database ========
 
         AgentEntity agent = AgentEntity.builder()
                 .user(savedUser)
                 .agentNumber(generateAgentCode())
+                .firstName(request.firstName().trim())
+                .middleName(middleName)
+                .lastName(request.lastName().trim())
+                .email(email)
+                .phoneNumber(normalizedPhone)
+                .businessName(request.businessName().trim())
+                .tinNumber(request.tinNumber().trim())
+                .agentStatus(AgentStatus.ACTIVE)
+                .createdBy(admin)
                 .gender(request.gender())
                 .dateOfBirth(request.dateOfBirth())
                 .region(region)
@@ -156,14 +166,13 @@ public class AgentService {
     @Transactional(readOnly = true)
     public AgentDetailResponse listAgent(UUID agentId) {
         AgentEntity agent = findAgentOrThrow(agentId);
-        return toDetailResponse(agent, agent.getUser());
+        return toDetailResponse(agent);
     }
 
     //====================== Update AGENT ======================== //
     @Transactional
     public AgentUpdateResponse updateAgent(UUID agentId, AgentUpdateRequest request) {
         AgentEntity agent = findAgentOrThrow(agentId);
-        UserEntity user = agent.getUser();
 
         RegionEntity region = regionRepository.findByExternalId(request.regionId())
                 .orElseThrow(() -> new BadRequestException("Unknown regionId"));
@@ -175,18 +184,16 @@ public class AgentService {
             throw new BadRequestException("districtId does not belong to regionId");
         }
 
-        user.setFirstName(request.firstName().trim());
-        user.setMiddleName(request.middleName() != null ? request.middleName().trim() : "");
-        user.setLastName(request.lastName().trim());
-        userRepository.save(user);
-
+        agent.setFirstName(request.firstName().trim());
+        agent.setMiddleName(request.middleName() != null ? request.middleName().trim() : "");
+        agent.setLastName(request.lastName().trim());
         agent.setGender(request.gender());
         agent.setDateOfBirth(request.dateOfBirth());
         agent.setRegion(region);
         agent.setDistrict(district);
         AgentEntity savedAgent = agentRepository.save(agent);
 
-        return toUpdateResponse(savedAgent, user);
+        return toUpdateResponse(savedAgent);
     }
 
     // ==================== Deactivate AGENT ===================== //
@@ -196,12 +203,15 @@ public class AgentService {
         AgentEntity agent = findAgentOrThrow(agentId);
         UserEntity user = agent.getUser();
 
-        if (user.getStatus() == UserStatus.DISABLED) {
+        if (user.getStatus() == UserStatus.DISABLED && agent.getAgentStatus() == AgentStatus.DEACTIVATED) {
             return;
         }
 
         user.setStatus(UserStatus.DISABLED);
         userRepository.save(user);
+
+        agent.setAgentStatus(AgentStatus.DEACTIVATED);
+        agentRepository.save(agent);
 
         WalletEntity floatWallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() -> new IllegalStateException("Agent float wallet not found"));
@@ -227,11 +237,11 @@ public class AgentService {
                 agent.getId(),
                 agent.getAgentNumber(),
                 user.getId(),
-                user.getFirstName(),
-                user.getMiddleName(),
-                user.getLastName(),
-                user.getEmail(),
-                user.getPhone(),
+                agent.getFirstName(),
+                agent.getMiddleName(),
+                agent.getLastName(),
+                agent.getEmail(),
+                agent.getPhoneNumber(),
                 agent.getGender(),
                 agent.getDateOfBirth(),
                 agent.getRegion().getExternalId(),
@@ -242,11 +252,12 @@ public class AgentService {
                 floatWallet.getAccountNumber(),
                 commissionWallet.getWalletNumber(),
                 commissionWallet.getAccountNumber(),
-                user.getStatus().name()
+                agent.getAgentStatus().name()
         );
     }
 
-    private AgentDetailResponse toDetailResponse(AgentEntity agent, UserEntity user) {
+    private AgentDetailResponse toDetailResponse(AgentEntity agent) {
+        UserEntity user = agent.getUser();
         WalletEntity floatWallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() -> new IllegalStateException("Agent float wallet not found"));
         WalletEntity commissionWallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_COMMISSION)
@@ -256,11 +267,11 @@ public class AgentService {
                 agent.getId(),
                 agent.getAgentNumber(),
                 user.getId(),
-                user.getFirstName(),
-                user.getMiddleName(),
-                user.getLastName(),
-                user.getEmail(),
-                user.getPhone(),
+                agent.getFirstName(),
+                agent.getMiddleName(),
+                agent.getLastName(),
+                agent.getEmail(),
+                agent.getPhoneNumber(),
                 agent.getGender(),
                 agent.getDateOfBirth(),
                 agent.getRegion().getExternalId(),
@@ -274,7 +285,7 @@ public class AgentService {
                 floatWallet.getWalletNumber(),
                 commissionWallet.getAccountNumber(),
                 commissionWallet.getWalletNumber(),
-                user.getStatus().name()
+                agent.getAgentStatus().name()
         );
     }
 
@@ -286,30 +297,30 @@ public class AgentService {
         return new AgentSummaryResponse(
                 agent.getId(),
                 agent.getAgentNumber(),
-                user.getFirstName(),
-                user.getMiddleName(),
-                user.getLastName(),
-                user.getPhone(),
+                agent.getFirstName(),
+                agent.getMiddleName(),
+                agent.getLastName(),
+                agent.getPhoneNumber(),
                 agent.getRegion().getName(),
                 agent.getDistrict().getName(),
-                user.getStatus().name(),
+                agent.getAgentStatus().name(),
                 floatWallet.getBalance()
         );
     }
 
-    private AgentUpdateResponse toUpdateResponse(AgentEntity agent, UserEntity user) {
+    private AgentUpdateResponse toUpdateResponse(AgentEntity agent) {
         return new AgentUpdateResponse(
                 agent.getId(),
-                user.getFirstName(),
-                user.getMiddleName(),
-                user.getLastName(),
+                agent.getFirstName(),
+                agent.getMiddleName(),
+                agent.getLastName(),
                 agent.getGender(),
                 agent.getDateOfBirth(),
                 agent.getRegion().getExternalId(),
                 agent.getRegion().getName(),
                 agent.getDistrict().getExternalId(),
                 agent.getDistrict().getName(),
-                user.getStatus().name()
+                agent.getAgentStatus().name()
         );
     }
 

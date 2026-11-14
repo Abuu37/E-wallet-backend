@@ -8,11 +8,13 @@ import com.application.e_wallet.agent.dto.AgentUpdateRequest;
 import com.application.e_wallet.agent.dto.AgentUpdateResponse;
 import com.application.e_wallet.agent.service.AgentService;
 import com.application.e_wallet.common.dto.ApiResponse;
+import com.application.e_wallet.security.jwt.AuthenticatedUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,9 +38,10 @@ public class AgentController {
     @PostMapping("/onboard")
     @PreAuthorize("hasAuthority('USER_CREATE')")
     public ResponseEntity<ApiResponse<AgentOnboardResponse>> onboardAgent(
-            @Valid @RequestBody AgentCreationRequest request
+            @Valid @RequestBody AgentCreationRequest request, Authentication authentication
     ) {
-        AgentOnboardResponse response = agentService.createAgent(request);
+        AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
+        AgentOnboardResponse response = agentService.createAgent(principal.userId(), request);
 
         ApiResponse<AgentOnboardResponse> body = ApiResponse.<AgentOnboardResponse>builder()
                 .timestamp(Instant.now())

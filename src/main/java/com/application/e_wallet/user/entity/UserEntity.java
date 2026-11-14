@@ -33,14 +33,21 @@ public class UserEntity implements UserDetails {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "first_name", nullable = false, length = 100)
-    private String firstName;
+    // Stable, opaque external identifier - self-generated if not supplied, same
+    // pattern as other self-generating identifiers (agentNumber, etc.) in this codebase.
+    @Column(name = "reference", nullable = false, unique = true)
+    private UUID reference;
 
-    @Column(name = "middle_name", nullable = false, length = 100)
-    private String middleName;
+    // Human-chosen login/display handle. NOTE: the field is deliberately NOT named
+    // "username" - Lombok's @Getter would then generate getUsername(), colliding with
+    // the UserDetails-contract override below (which must keep returning id.toString()
+    // for Spring Security's principal lookup). Naming it loginUsername keeps that
+    // collision from happening silently; the value is read via getLoginUsername().
+    @Column(name = "username", nullable = false, unique = true, length = 100)
+    private String loginUsername;
 
-    @Column(name = "last_name", nullable = false, length = 100)
-    private String  lastName;
+    @Column(name = "last_login_at")
+    private Instant lastLoginAt;
 
     @Column(nullable = false, length = 100, unique = true)
     private String email;
@@ -56,14 +63,9 @@ public class UserEntity implements UserDetails {
     @Column(nullable = false, length = 30)
     private UserStatus status;
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-            name = "user_roles",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "role_id")
-    )
-    @Builder.Default
-    private Set<RoleEntity> roles = new HashSet<>();
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "role_id", nullable = false)
+    private RoleEntity role;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -79,6 +81,9 @@ public class UserEntity implements UserDetails {
         if (this.status == null) {
             this.status = UserStatus.PENDING;
         }
+        if (this.reference == null) {
+            this.reference = UUID.randomUUID();
+        }
     }
 
     @PreUpdate
@@ -89,7 +94,7 @@ public class UserEntity implements UserDetails {
     @Override
     public@NonNull Collection<? extends GrantedAuthority> getAuthorities() {
         Set<GrantedAuthority> authorities = new HashSet<>();
-        for (RoleEntity role : this.roles) {
+        if (this.role != null) {
             // 1. Add the Role itself (e.g., ROLE_CUSTOMER)
             log.info("Role: {}", role);
             log.info("Permissions: {}", role.getPermissions());
@@ -107,6 +112,9 @@ public class UserEntity implements UserDetails {
         return pinHash;
     }
 
+    // Name fixed by the UserDetails contract: this intentionally stays id.toString()
+    // (not the human-chosen loginUsername) because Spring Security's principal lookup
+    // keys on it. See the loginUsername field comment above for why the two don't collide.
     @Override
     public @NonNull String getUsername() {
         return id.toString();
