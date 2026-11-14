@@ -3,7 +3,6 @@ package com.application.e_wallet.agent.entity;
 import com.application.e_wallet.location.entity.DistrictEntity;
 import com.application.e_wallet.location.entity.RegionEntity;
 import com.application.e_wallet.user.entity.UserEntity;
-import com.application.e_wallet.wallet.entity.WalletEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -61,10 +60,6 @@ public class AgentEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "district_id", nullable = false)
     private DistrictEntity district;
-
-    // One agent has one float wallet.
-    @OneToOne(mappedBy = "agent", fetch = FetchType.LAZY)
-    private WalletEntity wallet;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
