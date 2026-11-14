@@ -92,7 +92,7 @@ public class TreasuryRequestService {
     @Transactional(readOnly = true)
     public TreasuryRequestResponse getRequest(UUID requestId, UUID callerUserId, boolean canManage) {
 
-        TreasuryRequestEntity treasuryRequest = findOrThrow(requestId);
+        TreasuryRequestEntity treasuryRequest = findUnlocked(requestId);
 
         if (!canManage && !treasuryRequest.getAgent().getUser().getId().equals(callerUserId)) {
             throw new BadRequestException("Treasury request not found");
@@ -155,13 +155,17 @@ public class TreasuryRequestService {
         return toResponse(treasuryRequestRepository.save(treasuryRequest));
     }
 
-    //==================== FIND REQUEST ======================== //
-    private TreasuryRequestEntity findOrThrow(UUID requestId) {
-        return treasuryRequestRepository.findByRequestId(requestId)
+    // Unlocked lookup for read paths (getRequest). Must never be used by approve/reject -
+    // those need the locked query below to serialize concurrent decisions on the same row.
+    private TreasuryRequestEntity findUnlocked(UUID requestId) {
+        return treasuryRequestRepository.findById(requestId)
                 .orElseThrow(() -> new BadRequestException("Treasury request not found"));
     }
 
-    //=============== FIND REQUEST WITH DATABASE LOCK ================ //
+    // Locked lookup for approve/reject only. A read-only transaction (getRequest/listRequests)
+    // must never route through this - Postgres rejects SELECT ... FOR UPDATE inside a read-only
+    // transaction, and even where it wouldn't throw, it would needlessly serialize a view
+    // behind any in-flight approve/reject on the same row.
     private TreasuryRequestEntity findForUpdate(UUID requestId) {
         return treasuryRequestRepository.findByRequestId(requestId)
                 .orElseThrow(() -> new BadRequestException("Treasury request not found"));

@@ -93,6 +93,7 @@ class TreasuryRequestServiceTest {
                 .build();
 
         lenient().when(treasuryRequestRepository.findByRequestId(requestId)).thenReturn(Optional.of(request));
+        lenient().when(treasuryRequestRepository.findById(requestId)).thenReturn(Optional.of(request));
         lenient().when(userRepository.findById(adminUserId)).thenReturn(Optional.of(admin));
         lenient().when(treasuryRequestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(walletRepository.findByUserIdAndWalletType(agentUserId, WalletType.AGENT_FLOAT))
@@ -123,8 +124,16 @@ class TreasuryRequestServiceTest {
     }
 
     @Test
-    void approveAndRejectUseTheLockedRepositoryQuery() {
+    void approveUsesTheLockedRepositoryQuery() {
         treasuryRequestService.approveRequest(requestId, adminUserId);
+
+        verify(treasuryRequestRepository).findByRequestId(requestId);
+        verify(treasuryRequestRepository, never()).findById(requestId);
+    }
+
+    @Test
+    void rejectUsesTheLockedRepositoryQuery() {
+        treasuryRequestService.rejectRequest(requestId, adminUserId, new TreasuryRequestDecisionRequest("not needed"));
 
         verify(treasuryRequestRepository).findByRequestId(requestId);
         verify(treasuryRequestRepository, never()).findById(requestId);
@@ -135,5 +144,13 @@ class TreasuryRequestServiceTest {
         assertThatThrownBy(() -> treasuryRequestService.rejectRequest(
                 requestId, adminUserId, new TreasuryRequestDecisionRequest("")))
                 .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void getRequestUsesTheUnlockedLookupNotTheLockedQuery() {
+        treasuryRequestService.getRequest(requestId, adminUserId, true);
+
+        verify(treasuryRequestRepository).findById(requestId);
+        verify(treasuryRequestRepository, never()).findByRequestId(requestId);
     }
 }
