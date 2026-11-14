@@ -72,6 +72,10 @@ public class AuthService {
             throw new DuplicationResourceException("Phone already exists");
         }
 
+        if (userRepository.existsByLoginUsername(request.getUsername().trim())) {
+            throw new DuplicationResourceException("Username already exists");
+        }
+
         RoleEntity customerRole = roleRepository
                 .findByName("CUSTOMER")
                 .orElseThrow(() ->

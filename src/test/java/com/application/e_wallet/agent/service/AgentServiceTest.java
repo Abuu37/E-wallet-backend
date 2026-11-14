@@ -6,6 +6,7 @@ import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.entity.Gender;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.auth.repository.UserSessionRepository;
+import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.location.entity.DistrictEntity;
 import com.application.e_wallet.location.entity.RegionEntity;
@@ -37,9 +38,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -113,6 +116,28 @@ class AgentServiceTest {
         List<WalletType> savedTypes = captor.getAllValues().stream().map(WalletEntity::getWalletType).toList();
         assertThat(savedTypes).containsExactlyInAnyOrder(WalletType.AGENT_FLOAT, WalletType.AGENT_COMMISSION);
         assertThat(captor.getAllValues()).allMatch(w -> w.getBalance().compareTo(BigDecimal.ZERO) == 0);
+    }
+
+    @Test
+    void createAgentThrowsDuplicationResourceExceptionOnDuplicateUsername() {
+        AgentCreationRequest request = new AgentCreationRequest(
+                "jane.doe", "Jane", "M", "Doe", "jane.doe@example.com", "0712345678",
+                Gender.FEMALE, LocalDate.of(1995, 1, 1), "TZ01", "TZ0101",
+                "Jane's Shop", "TIN-12345"
+        );
+
+        lenient().when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        lenient().when(userRepository.existsByPhone(anyString())).thenReturn(false);
+        lenient().when(phoneNumberNormalizer.normalize("0712345678")).thenReturn("+255712345678");
+        when(userRepository.existsByLoginUsername("jane.doe")).thenReturn(true);
+
+        UUID adminUserId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> agentService.createAgent(adminUserId, request))
+                .isInstanceOf(DuplicationResourceException.class)
+                .hasMessageContaining("Username");
+
+        verify(userRepository, never()).save(any());
     }
 
     @Test

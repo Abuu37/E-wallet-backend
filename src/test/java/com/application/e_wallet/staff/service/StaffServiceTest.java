@@ -2,6 +2,7 @@ package com.application.e_wallet.staff.service;
 
 import com.application.e_wallet.auth.repository.UserSessionRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
+import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.otp.service.EmailService;
 import com.application.e_wallet.otp.service.OtpGenerator;
@@ -33,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -99,6 +101,26 @@ class StaffServiceTest {
         verify(userRepository).save(userCaptor.capture());
         assertThat(userCaptor.getValue().getRole()).isEqualTo(adminRole);
         assertThat(userCaptor.getValue().getLoginUsername()).isEqualTo("jdoe");
+    }
+
+    @Test
+    void createStaffThrowsDuplicationResourceExceptionOnDuplicateUsername() {
+        StaffCreationRequest request = new StaffCreationRequest(
+                "jdoe", "Jane", "M", "Doe", "jane.doe@example.com", "0712345678", "Accountant"
+        );
+
+        lenient().when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        lenient().when(userRepository.existsByPhone(anyString())).thenReturn(false);
+        lenient().when(phoneNumberNormalizer.normalize("0712345678")).thenReturn("+255712345678");
+        when(userRepository.existsByLoginUsername("jdoe")).thenReturn(true);
+
+        UUID adminUserId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> staffService.createStaff(adminUserId, request))
+                .isInstanceOf(DuplicationResourceException.class)
+                .hasMessageContaining("Username");
+
+        verify(userRepository, never()).save(any());
     }
 
     @Test

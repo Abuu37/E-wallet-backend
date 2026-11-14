@@ -59,6 +59,10 @@ public class StaffService {
             throw new DuplicationResourceException("Phone already exists");
         }
 
+        if (userRepository.existsByLoginUsername(request.username().trim())) {
+            throw new DuplicationResourceException("Username already exists");
+        }
+
         RoleEntity staffRole = roleRepository.findByName(STAFF_ROLE)
                 .orElseThrow(() -> new IllegalStateException("ADMIN role not found"));
 

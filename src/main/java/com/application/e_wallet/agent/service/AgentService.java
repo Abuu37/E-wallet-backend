@@ -72,6 +72,10 @@ public class AgentService {
             throw new DuplicationResourceException("Phone already exists");
         }
 
+        if (userRepository.existsByLoginUsername(request.username().trim())) {
+            throw new DuplicationResourceException("Username already exists");
+        }
+
         RoleEntity agentRole = roleRepository.findByName("AGENT")
                 .orElseThrow(() -> new IllegalStateException("AGENT role not found"));
 

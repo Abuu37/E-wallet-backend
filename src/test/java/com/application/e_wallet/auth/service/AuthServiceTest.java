@@ -4,6 +4,7 @@ import com.application.e_wallet.auth.dto.CustomerRegistrationRequest;
 import com.application.e_wallet.auth.dto.SetPinRequest;
 import com.application.e_wallet.auth.dto.UserProfileResponse;
 import com.application.e_wallet.auth.repository.UserSessionRepository;
+import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.entity.CustomerStatus;
@@ -35,9 +36,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -104,6 +107,31 @@ class AuthServiceTest {
                 ArgumentCaptor.forClass(CustomerRegistrationRequest.class);
         verify(customerService).createCustomer(any(UserEntity.class), requestCaptor.capture());
         assertThat(requestCaptor.getValue().getNidaNumber()).isEqualTo("1234567890123456");
+    }
+
+    @Test
+    void registerCustomerThrowsDuplicationResourceExceptionOnDuplicateUsername() {
+        CustomerRegistrationRequest request = new CustomerRegistrationRequest();
+        request.setUsername("jdoe");
+        request.setFirstName("Jane");
+        request.setMiddleName("M");
+        request.setLastName("Doe");
+        request.setEmail("jane.doe@example.com");
+        request.setPhone("0712345678");
+        request.setNidaNumber("1234567890123456");
+        request.setDateOfBirth(LocalDate.of(1995, 1, 1));
+        request.setAddress("123 Main St");
+
+        lenient().when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        lenient().when(userRepository.existsByPhone(anyString())).thenReturn(false);
+        lenient().when(phoneNumberNormalizer.normalize("0712345678")).thenReturn("+255712345678");
+        when(userRepository.existsByLoginUsername("jdoe")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.registerCustomer(request))
+                .isInstanceOf(DuplicationResourceException.class)
+                .hasMessageContaining("Username");
+
+        verify(userRepository, never()).save(any());
     }
 
     @Test
