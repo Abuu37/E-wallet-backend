@@ -5,11 +5,14 @@ import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.agent.repository.LowFloatAgentProjection;
+import com.application.e_wallet.customer.entity.CustomerStatus;
+import com.application.e_wallet.customer.repository.CustomerRepository;
 import com.application.e_wallet.dashboard.dto.ActionAlerts;
 import com.application.e_wallet.dashboard.dto.HourlyTrendPoint;
 import com.application.e_wallet.dashboard.dto.LiquidityCards;
 import com.application.e_wallet.dashboard.dto.LowFloatAgentItem;
 import com.application.e_wallet.dashboard.dto.LowFloatAgentsSummary;
+import com.application.e_wallet.dashboard.dto.NetworkStats;
 import com.application.e_wallet.dashboard.dto.PendingFloatRequestItem;
 import com.application.e_wallet.dashboard.dto.PendingFloatRequestsSummary;
 import com.application.e_wallet.dashboard.dto.TodayTransactionMetrics;
@@ -49,6 +52,7 @@ public class DashboardService {
     private final TransactionRepository transactionRepository;
     private final TreasuryRequestRepository treasuryRequestRepository;
     private final AgentRepository agentRepository;
+    private final CustomerRepository customerRepository;
 
     // Package-private: later tasks reuse this window shape for other "today" dashboard sections.
     record DayWindow(OffsetDateTime start, OffsetDateTime end) {
@@ -108,13 +112,20 @@ public class DashboardService {
     }
 
     private static TransactionTypeMetric summarize(List<TransactionEntity> transactions, TransactionType type) {
+        List<TransactionEntity> filtered = transactions.stream()
+                .filter(transaction -> transaction.getTransactionType().equals(type.name()))
+                .toList();
+        return summarize(filtered);
+    }
+
+    // Package-private: Task 5 reuses this count+volume reduction for its own status-filtered
+    // transaction lists (pending/failed today) instead of re-filtering by type.
+    private static TransactionTypeMetric summarize(List<TransactionEntity> transactions) {
         long count = 0;
         BigDecimal volume = BigDecimal.ZERO;
         for (TransactionEntity transaction : transactions) {
-            if (transaction.getTransactionType().equals(type.name())) {
-                count++;
-                volume = volume.add(transaction.getAmount());
-            }
+            count++;
+            volume = volume.add(transaction.getAmount());
         }
         return new TransactionTypeMetric(count, volume);
     }
@@ -195,5 +206,23 @@ public class DashboardService {
         }
 
         return new LowFloatAgentsSummary(FloatHealth.LOW_THRESHOLD, agents.size(), agents);
+    }
+
+    // Package-private: Task 6 calls this directly when assembling the final overview response.
+    NetworkStats buildNetworkStats(DayWindow window) {
+        long totalActiveAgents = agentRepository.countByAgentStatus(AgentStatus.ACTIVE);
+        long totalActiveCustomers = customerRepository.countByStatus(CustomerStatus.ACTIVE);
+
+        List<TransactionEntity> pendingTransactions = transactionRepository.findByStatusAndCreatedAtBetween(
+                TransactionStatus.PENDING.name(), window.start(), window.end());
+        List<TransactionEntity> failedTransactions = transactionRepository.findByStatusAndCreatedAtBetween(
+                TransactionStatus.FAILED.name(), window.start(), window.end());
+
+        return new NetworkStats(
+                totalActiveAgents,
+                totalActiveCustomers,
+                summarize(pendingTransactions),
+                summarize(failedTransactions)
+        );
     }
 }

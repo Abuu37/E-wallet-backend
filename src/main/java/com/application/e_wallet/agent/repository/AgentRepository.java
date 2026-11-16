@@ -18,6 +18,8 @@ public interface AgentRepository extends JpaRepository<AgentEntity, UUID> {
 
     Optional<AgentEntity> findByUserId(UUID userid);
 
+    long countByAgentStatus(AgentStatus agentStatus);
+
     @Query("""
             SELECT a.id AS agentId, a.agentNumber AS agentCode, a.businessName AS businessName,
                    a.phoneNumber AS phoneNumber, w.accountNumber AS floatAccountNumber, w.balance AS currentBalance

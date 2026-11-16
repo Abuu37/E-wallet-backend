@@ -4,8 +4,11 @@ import com.application.e_wallet.agent.dto.FloatHealth;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.repository.AgentRepository;
+import com.application.e_wallet.customer.entity.CustomerStatus;
+import com.application.e_wallet.customer.repository.CustomerRepository;
 import com.application.e_wallet.dashboard.dto.ActionAlerts;
 import com.application.e_wallet.dashboard.dto.LiquidityCards;
+import com.application.e_wallet.dashboard.dto.NetworkStats;
 import com.application.e_wallet.dashboard.dto.TodayTransactionMetrics;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
@@ -42,6 +45,7 @@ class DashboardServiceTest {
     @Mock private TransactionRepository transactionRepository;
     @Mock private TreasuryRequestRepository treasuryRequestRepository;
     @Mock private AgentRepository agentRepository;
+    @Mock private CustomerRepository customerRepository;
     @InjectMocks private DashboardService dashboardService;
 
     @Test
@@ -198,6 +202,28 @@ class DashboardServiceTest {
         assertThat(result.pendingFloatRequests().count()).isZero();
         assertThat(result.pendingFloatRequests().recentRequests()).isEmpty();
         assertThat(result.lowFloatAgents().agents()).isEmpty();
+    }
+
+    @Test
+    void buildNetworkStatsCountsActiveAgentsAndCustomersAndSplitsPendingAndFailedTransactions() {
+        DashboardService.DayWindow window = new DashboardService.DayWindow(
+                OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-16T10:30:00+03:00"));
+
+        when(agentRepository.countByAgentStatus(AgentStatus.ACTIVE)).thenReturn(85L);
+        when(customerRepository.countByStatus(CustomerStatus.ACTIVE)).thenReturn(1420L);
+        when(transactionRepository.findByStatusAndCreatedAtBetween("PENDING", window.start(), window.end()))
+                .thenReturn(List.of(transaction("CASH_IN", "PENDING", "30000.00", "2026-11-16T09:00:00+03:00")));
+        when(transactionRepository.findByStatusAndCreatedAtBetween("FAILED", window.start(), window.end()))
+                .thenReturn(List.of());
+
+        NetworkStats result = dashboardService.buildNetworkStats(window);
+
+        assertThat(result.totalActiveAgents()).isEqualTo(85);
+        assertThat(result.totalActiveCustomers()).isEqualTo(1420);
+        assertThat(result.pendingTransactionsToday().count()).isEqualTo(1);
+        assertThat(result.pendingTransactionsToday().volume()).isEqualByComparingTo("30000.00");
+        assertThat(result.failedTransactionsToday().count()).isZero();
+        assertThat(result.failedTransactionsToday().volume()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     private static TransactionEntity transaction(String type, String status, String amount, String createdAtIso) {
