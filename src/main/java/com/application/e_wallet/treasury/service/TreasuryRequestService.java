@@ -200,7 +200,6 @@ public class TreasuryRequestService {
                 agent.getRegion().getName(),
                 agent.getDistrict().getName(),
                 user.getPhone(),
-                wallet.getWalletNumber(),
                 wallet.getAccountNumber(),
                 treasuryRequest.getAmount(),
                 treasuryRequest.getReason(),

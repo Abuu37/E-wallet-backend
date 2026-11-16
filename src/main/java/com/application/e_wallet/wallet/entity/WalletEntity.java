@@ -9,16 +9,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(
-        name = "wallets",
-        indexes = {
-                @Index(
-                        name = "idx_wallet_wallet_number",
-                        columnList = "wallet_number",
-                        unique = true
-                )
-        }
-)
+@Table(name = "wallets")
 
 @Getter
 @Setter
@@ -41,14 +32,6 @@ public class WalletEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "wallet_type", nullable = false, length = 30)
     private WalletType walletType;
-
-    @Column(
-            name = "wallet_number",
-            nullable = false,
-            unique = true,
-            length = 30
-    )
-    private String walletNumber;
 
     @Column(name = "account_number", nullable = false, unique = true, length = 30)
     private String accountNumber;

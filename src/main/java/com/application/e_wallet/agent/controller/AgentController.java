@@ -2,8 +2,8 @@ package com.application.e_wallet.agent.controller;
 
 import com.application.e_wallet.agent.dto.AgentCreationRequest;
 import com.application.e_wallet.agent.dto.AgentDetailResponse;
+import com.application.e_wallet.agent.dto.AgentListResponse;
 import com.application.e_wallet.agent.dto.AgentOnboardResponse;
-import com.application.e_wallet.agent.dto.AgentSummaryResponse;
 import com.application.e_wallet.agent.dto.AgentUpdateRequest;
 import com.application.e_wallet.agent.dto.AgentUpdateResponse;
 import com.application.e_wallet.agent.service.AgentService;
@@ -11,6 +11,8 @@ import com.application.e_wallet.common.dto.ApiResponse;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,10 +24,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -57,10 +59,14 @@ public class AgentController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('USER_VIEW')")
-    public ResponseEntity<ApiResponse<List<AgentSummaryResponse>>> listAgents() {
-        List<AgentSummaryResponse> response = agentService.listAgents();
+    public ResponseEntity<ApiResponse<AgentListResponse>> listAgents(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        Pageable pageable = PageRequest.of(page, size);
+        AgentListResponse response = agentService.listAgents(pageable);
 
-        ApiResponse<List<AgentSummaryResponse>> body = ApiResponse.<List<AgentSummaryResponse>>builder()
+        ApiResponse<AgentListResponse> body = ApiResponse.<AgentListResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
                 .message("Agents retrieved successfully.")

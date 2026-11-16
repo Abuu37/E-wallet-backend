@@ -20,9 +20,7 @@ public record AgentOnboardResponse(
         String regionName,
         String districtId,
         String districtName,
-        String floatWalletNumber,
         String floatAccountNumber,
-        String commissionWalletNumber,
         String commissionAccountNumber,
         String status
 ) {

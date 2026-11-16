@@ -8,6 +8,7 @@ import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.auth.repository.UserSessionRepository;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
+import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
 import com.application.e_wallet.location.entity.DistrictEntity;
 import com.application.e_wallet.location.entity.RegionEntity;
 import com.application.e_wallet.location.repository.DistrictRepository;
@@ -53,6 +54,7 @@ class AgentServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private RoleRepository roleRepository;
     @Mock private WalletRepository walletRepository;
+    @Mock private TransactionJournalLineRepository transactionJournalLineRepository;
     @Mock private RegionRepository regionRepository;
     @Mock private DistrictRepository districtRepository;
     @Mock private UserSessionRepository userSessionRepository;

@@ -14,7 +14,6 @@ public record TreasuryRequestResponse(
         String region,
         String district,
         String phone,
-        String walletNumber,
         String accountNumber,
         BigDecimal amount,
         String reason,

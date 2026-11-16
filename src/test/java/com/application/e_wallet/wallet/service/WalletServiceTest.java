@@ -4,8 +4,10 @@ import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.repository.CustomerRepository;
+import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
+import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.user.entity.UserEntity;
-import com.application.e_wallet.wallet.dto.WalletResponse;
+import com.application.e_wallet.wallet.dto.WalletDetailResponse;
 import com.application.e_wallet.wallet.entity.WalletEntity;
 import com.application.e_wallet.wallet.entity.WalletStatus;
 import com.application.e_wallet.wallet.entity.WalletType;
@@ -17,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,6 +38,9 @@ class WalletServiceTest {
 
     @Mock
     private AgentRepository agentRepository;
+
+    @Mock
+    private TransactionJournalLineRepository transactionJournalLineRepository;
 
     @InjectMocks
     private WalletService walletService;
@@ -55,45 +61,61 @@ class WalletServiceTest {
 
         assertThat(wallet.getWalletType()).isEqualTo(WalletType.CUSTOMER_MAIN);
         assertThat(wallet.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(wallet.getWalletNumber()).isEqualTo("0712345678");
-        assertThat(wallet.getAccountNumber()).isEqualTo("0712345678");
+        // "01" + 8 digits + 2 letters = 12 characters, per the agreed customer account format.
+        assertThat(wallet.getAccountNumber()).matches("01\\d{8}[A-Z]{2}");
         assertThat(wallet.getAccountName()).isEqualTo("Jane Doe");
     }
 
     @Test
-    void getWalletByNumberMapsCustomerMainToCustomerOwnerType() {
-        UserEntity user = UserEntity.builder().id(UUID.randomUUID()).phone("0712345678").build();
+    void getWalletByAccountNumberMapsCustomerMainToCustomerOwnerType() {
+        UUID userId = UUID.randomUUID();
+        RoleEntity role = RoleEntity.builder().id(UUID.randomUUID()).name("CUSTOMER").build();
+        UserEntity user = UserEntity.builder().id(userId).phone("0712345678").role(role).build();
         WalletEntity wallet = WalletEntity.builder()
                 .id(UUID.randomUUID())
                 .user(user)
                 .walletType(WalletType.CUSTOMER_MAIN)
-                .walletNumber("0712345678")
-                .accountNumber("0712345678")
+                .accountNumber("0112345678AB")
                 .currency("TZS")
                 .balance(new BigDecimal("500.00"))
                 .status(WalletStatus.ACTIVE)
                 .build();
-        when(walletRepository.findByWalletNumber("0712345678")).thenReturn(Optional.of(wallet));
+        CustomerEntity customer = CustomerEntity.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .firstName("Jane")
+                .lastName("Doe")
+                .build();
+        when(walletRepository.findByAccountNumber("0112345678AB")).thenReturn(Optional.of(wallet));
+        when(customerRepository.findByUserId(userId)).thenReturn(Optional.of(customer));
+        when(transactionJournalLineRepository.findTop5ByWalletIdInOrderByJournal_CreatedAtDesc(List.of(wallet.getId())))
+                .thenReturn(List.of());
 
-        WalletResponse response = walletService.getWalletByNumber("0712345678");
+        WalletDetailResponse response = walletService.getWalletByAccountNumber("0112345678AB");
 
-        assertThat(response.ownerType()).isEqualTo("CUSTOMER");
+        assertThat(response.owner().name()).isEqualTo("Jane Doe");
+        assertThat(response.owner().role()).isEqualTo("CUSTOMER");
         assertThat(response.balance()).isEqualByComparingTo(new BigDecimal("500.00"));
-        assertThat(response.accountNumber()).isEqualTo("0712345678");
+        assertThat(response.accountNumber()).isEqualTo("0112345678AB");
     }
 
     @Test
     void getMyWalletForAgentReturnsTheFloatWallet() {
         UUID userId = UUID.randomUUID();
-        UserEntity user = UserEntity.builder().id(userId).phone("0798765432").build();
-        AgentEntity agent = AgentEntity.builder().id(UUID.randomUUID()).user(user).build();
+        RoleEntity role = RoleEntity.builder().id(UUID.randomUUID()).name("AGENT").build();
+        UserEntity user = UserEntity.builder().id(userId).phone("0798765432").role(role).build();
+        AgentEntity agent = AgentEntity.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .businessName("Kariakoo Wakala Point")
+                .agentNumber("40512")
+                .build();
 
         WalletEntity floatWallet = WalletEntity.builder()
                 .id(UUID.randomUUID())
                 .user(user)
                 .walletType(WalletType.AGENT_FLOAT)
-                .walletNumber("FLT-123")
-                .accountNumber("FLT-123")
+                .accountNumber("019876543210")
                 .currency("TZS")
                 .balance(new BigDecimal("1000.00"))
                 .status(WalletStatus.ACTIVE)
@@ -103,11 +125,14 @@ class WalletServiceTest {
         when(agentRepository.findByUserId(userId)).thenReturn(Optional.of(agent));
         when(walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_FLOAT))
                 .thenReturn(Optional.of(floatWallet));
+        when(transactionJournalLineRepository.findTop5ByWalletIdInOrderByJournal_CreatedAtDesc(List.of(floatWallet.getId())))
+                .thenReturn(List.of());
 
-        WalletResponse response = walletService.getMyWallet(userId);
+        WalletDetailResponse response = walletService.getMyWallet(userId);
 
-        assertThat(response.ownerType()).isEqualTo("AGENT");
-        assertThat(response.walletNumber()).isEqualTo("FLT-123");
+        assertThat(response.owner().name()).isEqualTo("Kariakoo Wakala Point");
+        assertThat(response.owner().role()).isEqualTo("AGENT");
+        assertThat(response.accountNumber()).isEqualTo("019876543210");
         assertThat(response.balance()).isEqualByComparingTo(new BigDecimal("1000.00"));
     }
 }

@@ -43,7 +43,7 @@ public class TreasuryRequestController {
         ApiResponse<TreasuryRequestResponse> body = ApiResponse.<TreasuryRequestResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.CREATED.value())
-                .message("Treasury request submitted successfully. Awaiting admin review")
+                .message("Float request submitted successfully. Awaiting admin review")
                 .data(response)
                 .build();
 
@@ -59,7 +59,7 @@ public class TreasuryRequestController {
         ApiResponse<List<TreasuryRequestResponse>> body = ApiResponse.<List<TreasuryRequestResponse>>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Treasury requests retrieved successfully.")
+                .message("Float requests retrieved successfully.")
                 .data(response)
                 .build();
 
@@ -78,7 +78,7 @@ public class TreasuryRequestController {
         ApiResponse<TreasuryRequestResponse> body = ApiResponse.<TreasuryRequestResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Treasury request retrieved successfully.")
+                .message("Float request retrieved successfully.")
                 .data(response)
                 .build();
 
@@ -97,7 +97,7 @@ public class TreasuryRequestController {
         ApiResponse<TreasuryRequestResponse> body = ApiResponse.<TreasuryRequestResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Treasury request approved and float moved.")
+                .message("Float request approved and moved sucessfully to agent account.")
                 .data(response)
                 .build();
 

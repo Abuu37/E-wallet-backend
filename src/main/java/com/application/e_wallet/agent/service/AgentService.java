@@ -1,11 +1,15 @@
 package com.application.e_wallet.agent.service;
 
+import com.application.e_wallet.agent.dto.AgentAccountDetail;
 import com.application.e_wallet.agent.dto.AgentCreationRequest;
 import com.application.e_wallet.agent.dto.AgentDetailResponse;
+import com.application.e_wallet.agent.dto.AgentListResponse;
 import com.application.e_wallet.agent.dto.AgentOnboardResponse;
 import com.application.e_wallet.agent.dto.AgentSummaryResponse;
+import com.application.e_wallet.agent.dto.AgentTransactionSummary;
 import com.application.e_wallet.agent.dto.AgentUpdateRequest;
 import com.application.e_wallet.agent.dto.AgentUpdateResponse;
+import com.application.e_wallet.agent.dto.AgentWalletSummary;
 import com.application.e_wallet.agent.dto.FloatHealth;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.entity.AgentStatus;
@@ -14,6 +18,7 @@ import com.application.e_wallet.auth.repository.UserSessionRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
+import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
 import com.application.e_wallet.location.entity.DistrictEntity;
 import com.application.e_wallet.location.entity.RegionEntity;
 import com.application.e_wallet.location.repository.DistrictRepository;
@@ -30,25 +35,32 @@ import com.application.e_wallet.wallet.entity.WalletStatus;
 import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
-public class AgentService {
+public class    AgentService {
 
     private static final int ONE_TIME_PIN_LENGTH = 4;
+    private static final String FLOAT_ACCOUNT_PREFIX = "01";
+    private static final String COMMISSION_ACCOUNT_PREFIX = "02";
 
     private final AgentRepository agentRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final WalletRepository walletRepository;
+    private final TransactionJournalLineRepository transactionJournalLineRepository;
     private final RegionRepository regionRepository;
     private final DistrictRepository districtRepository;
     private final UserSessionRepository userSessionRepository;
@@ -126,14 +138,13 @@ public class AgentService {
 
         AgentEntity savedAgent = agentRepository.save(agent); //=== Agent account created ====
 
-        String floatNumber = generateFloatNumber();//todo: generate valid GL Accounts based on the BOT requirements
-        String commissionNumber = "COM-" + savedAgent.getAgentNumber();
+        String floatNumber = generateFloatNumber();
+        String commissionNumber = generateCommissionNumber();
         String agentFullName = savedAgent.getFirstName() + " " + savedAgent.getLastName();
 
         WalletEntity floatWallet = WalletEntity.builder()
                 .user(savedUser)
                 .walletType(WalletType.AGENT_FLOAT)
-                .walletNumber(floatNumber)
                 .accountNumber(floatNumber)
                 .accountName(agentFullName + " — Float")
                 .balance(BigDecimal.ZERO)
@@ -144,7 +155,6 @@ public class AgentService {
         WalletEntity commissionWallet = WalletEntity.builder()
                 .user(savedUser)
                 .walletType(WalletType.AGENT_COMMISSION)
-                .walletNumber(commissionNumber)
                 .accountNumber(commissionNumber)
                 .accountName(agentFullName + " — Commission")
                 .balance(BigDecimal.ZERO)
@@ -163,10 +173,17 @@ public class AgentService {
 
     //======================= List AN AGENT ====================//
     @Transactional(readOnly = true)
-    public List<AgentSummaryResponse> listAgents() {
-        return agentRepository.findAll().stream()
+    public AgentListResponse listAgents(Pageable pageable) {
+        Page<AgentEntity> page = agentRepository.findAll(pageable);
+        List<AgentSummaryResponse> agents = page.getContent().stream()
                 .map(this::toSummaryResponse)
                 .toList();
+
+        return new AgentListResponse(
+                agents,
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements());
     }
 
     // =================== List specific AGENT ================== //
@@ -255,9 +272,7 @@ public class AgentService {
                 agent.getRegion().getName(),
                 agent.getDistrict().getExternalId(),
                 agent.getDistrict().getName(),
-                floatWallet.getWalletNumber(),
                 floatWallet.getAccountNumber(),
-                commissionWallet.getWalletNumber(),
                 commissionWallet.getAccountNumber(),
                 agent.getAgentStatus().name()
         );
@@ -285,13 +300,10 @@ public class AgentService {
                 agent.getRegion().getName(),
                 agent.getDistrict().getExternalId(),
                 agent.getDistrict().getName(),
-                floatWallet.getBalance(),
                 FloatHealth.fromBalance(floatWallet.getBalance()),
-                commissionWallet.getBalance(),
-                floatWallet.getAccountNumber(),
-                floatWallet.getWalletNumber(),
-                commissionWallet.getAccountNumber(),
-                commissionWallet.getWalletNumber(),
+                toAccountDetail(floatWallet),
+                toAccountDetail(commissionWallet),
+                recentTransactionsFor(floatWallet, commissionWallet),
                 agent.getAgentStatus().name()
         );
     }
@@ -300,6 +312,8 @@ public class AgentService {
         UserEntity user = agent.getUser();
         WalletEntity floatWallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() -> new IllegalStateException("Agent float wallet not found"));
+        WalletEntity commissionWallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_COMMISSION)
+                .orElseThrow(() -> new IllegalStateException("Agent commission wallet not found"));
 
         return new AgentSummaryResponse(
                 agent.getId(),
@@ -311,7 +325,8 @@ public class AgentService {
                 agent.getRegion().getName(),
                 agent.getDistrict().getName(),
                 agent.getAgentStatus().name(),
-                floatWallet.getBalance()
+                toWalletSummary(floatWallet),
+                toWalletSummary(commissionWallet)
         );
     }
 
@@ -331,6 +346,46 @@ public class AgentService {
         );
     }
 
+    private AgentWalletSummary toWalletSummary(WalletEntity wallet) {
+        return new AgentWalletSummary(wallet.getAccountNumber(), wallet.getBalance(), wallet.getCurrency());
+    }
+
+    private AgentAccountDetail toAccountDetail(WalletEntity wallet) {
+        return new AgentAccountDetail(
+                wallet.getAccountNumber(),
+                wallet.getBalance(),
+                wallet.getStatus().name(),
+                lastTransactionAt(wallet.getId())
+        );
+    }
+
+    private OffsetDateTime lastTransactionAt(UUID walletId) {
+        return transactionJournalLineRepository.findFirstByWalletIdOrderByJournal_CreatedAtDesc(walletId)
+                .map(line -> line.getJournal().getCreatedAt())
+                .orElse(null);
+    }
+
+    private List<AgentTransactionSummary> recentTransactionsFor(WalletEntity floatWallet, WalletEntity commissionWallet) {
+        Map<UUID, String> accountNumberByWalletId = Map.of(
+                floatWallet.getId(), floatWallet.getAccountNumber(),
+                commissionWallet.getId(), commissionWallet.getAccountNumber()
+        );
+
+        return transactionJournalLineRepository
+                .findTop5ByWalletIdInOrderByJournal_CreatedAtDesc(List.copyOf(accountNumberByWalletId.keySet()))
+                .stream()
+                .map(line -> new AgentTransactionSummary(
+                        line.getJournal().getReferenceNumber(),
+                        accountNumberByWalletId.get(line.getWalletId()),
+                        line.getJournal().getTransactionType().name(),
+                        line.getEntryType().name(),
+                        line.getAmount(),
+                        "COMPLETED",
+                        line.getJournal().getCreatedAt()
+                ))
+                .toList();
+    }
+
     private String generateAgentCode() {
         String code;
         do {
@@ -340,13 +395,31 @@ public class AgentService {
         return code;
     }
 
-    // Opaque visual number for the agent's float wallet/account.
+    // 12-digit account number, "01" lead (shared with CUSTOMER_MAIN by design), retried on collision.
     private String generateFloatNumber() {
-        return "FLT-" +
-                UUID.randomUUID()
-                        .toString()
-                        .replace("-", "")
-                        .substring(0, 12)
-                        .toUpperCase();
+        String number;
+        do {
+            number = FLOAT_ACCOUNT_PREFIX + randomDigits(10);
+        } while (walletRepository.existsByAccountNumber(number));
+
+        return number;
+    }
+
+    // 12-digit account number, "02" lead, retried on collision.
+    private String generateCommissionNumber() {
+        String number;
+        do {
+            number = COMMISSION_ACCOUNT_PREFIX + randomDigits(10);
+        } while (walletRepository.existsByAccountNumber(number));
+
+        return number;
+    }
+
+    private static String randomDigits(int count) {
+        StringBuilder sb = new StringBuilder(count);
+        for (int i = 0; i < count; i++) {
+            sb.append(ThreadLocalRandom.current().nextInt(10));
+        }
+        return sb.toString();
     }
 }

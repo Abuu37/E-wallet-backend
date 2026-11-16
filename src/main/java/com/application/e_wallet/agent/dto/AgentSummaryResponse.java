@@ -1,6 +1,5 @@
 package com.application.e_wallet.agent.dto;
 
-import java.math.BigDecimal;
 import java.util.UUID;
 
 public record AgentSummaryResponse(
@@ -13,6 +12,7 @@ public record AgentSummaryResponse(
         String regionName,
         String districtName,
         String status,
-        BigDecimal floatBalance
+        AgentWalletSummary floatAccount,
+        AgentWalletSummary commissionAccount
 ) {
 }

@@ -2,8 +2,8 @@ package com.application.e_wallet.agent.dto;
 
 import com.application.e_wallet.agent.entity.Gender;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 public record AgentDetailResponse(
@@ -21,13 +21,10 @@ public record AgentDetailResponse(
         String regionName,
         String districtId,
         String districtName,
-        BigDecimal floatBalance,
         FloatHealth floatHealth,
-        BigDecimal commissionBalance,
-        String floatAccountNumber,
-        String floatWalletNumber,
-        String commissionAccountNumber,
-        String commissionWalletNumber,
+        AgentAccountDetail floatAccount,
+        AgentAccountDetail commissionAccount,
+        List<AgentTransactionSummary> recentTransactions,
         String status
 ) {
 }

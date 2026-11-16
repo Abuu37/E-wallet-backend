@@ -107,7 +107,6 @@ class TreasuryRequestServiceTest {
 
         WalletEntity agentFloatWallet = WalletEntity.builder()
                 .id(UUID.randomUUID())
-                .walletNumber("WAL-001")
                 .accountNumber("ACC-001")
                 .build();
 

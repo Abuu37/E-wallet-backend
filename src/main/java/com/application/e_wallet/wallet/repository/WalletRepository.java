@@ -34,5 +34,7 @@ public interface WalletRepository extends JpaRepository<WalletEntity, UUID> {
     @Query("SELECT COALESCE(SUM(w.balance), 0) FROM WalletEntity w WHERE w.walletType = :walletType")
     BigDecimal sumBalanceByWalletType(@Param("walletType") WalletType walletType);
 
-    Optional<WalletEntity> findByWalletNumber(String walletNumber);
+    Optional<WalletEntity> findByAccountNumber(String accountNumber);
+
+    boolean existsByAccountNumber(String accountNumber);
 }
