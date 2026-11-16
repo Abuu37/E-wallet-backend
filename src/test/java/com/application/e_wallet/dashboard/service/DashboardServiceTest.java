@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -159,6 +160,20 @@ class DashboardServiceTest {
         assertThat(result.pendingFloatRequests().totalRequestedAmount()).isEqualByComparingTo("2500000.00");
         assertThat(result.pendingFloatRequests().recentRequests()).hasSize(1);
         assertThat(result.pendingFloatRequests().recentRequests().get(0).floatAccountNumber()).isEqualTo("018492019482");
+    }
+
+    @Test
+    void buildActionAlertsThrowsWhenPendingRequestAgentHasNoFloatWallet() {
+        when(treasuryRequestRepository.countByStatus(RequestStatus.PENDING)).thenReturn(1L);
+        when(treasuryRequestRepository.sumAmountByStatus(RequestStatus.PENDING)).thenReturn(new BigDecimal("500000.00"));
+        TreasuryRequestEntity request = pendingRequest("46", "40513", "Mbezi Wakala Point", "500000.00", "CI261116.0900.A11224");
+        when(treasuryRequestRepository.findTop10ByStatusOrderByCreatedAtDesc(RequestStatus.PENDING)).thenReturn(List.of(request));
+        when(walletRepository.findByUserIdAndWalletType(request.getAgent().getUser().getId(), WalletType.AGENT_FLOAT))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(dashboardService::buildActionAlerts)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Agent float wallet not found");
     }
 
     @Test

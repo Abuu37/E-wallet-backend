@@ -35,7 +35,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -165,14 +164,14 @@ public class DashboardService {
 
     private PendingFloatRequestItem toPendingFloatRequestItem(TreasuryRequestEntity request) {
         AgentEntity agent = request.getAgent();
-        Optional<WalletEntity> wallet =
-                walletRepository.findByUserIdAndWalletType(agent.getUser().getId(), WalletType.AGENT_FLOAT);
+        WalletEntity wallet = walletRepository.findByUserIdAndWalletType(agent.getUser().getId(), WalletType.AGENT_FLOAT)
+                .orElseThrow(() -> new IllegalStateException("Agent float wallet not found"));
 
         return new PendingFloatRequestItem(
                 request.getId(),
                 agent.getAgentNumber(),
                 agent.getBusinessName(),
-                wallet.map(WalletEntity::getAccountNumber).orElse(null),
+                wallet.getAccountNumber(),
                 request.getAmount(),
                 request.getExternalReference(),
                 request.getCreatedAt()
