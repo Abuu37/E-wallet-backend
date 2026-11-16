@@ -16,6 +16,7 @@ import com.application.e_wallet.ledger.repository.TransactionJournalLineReposito
 import com.application.e_wallet.transaction.entity.TransactionEntity;
 import com.application.e_wallet.transaction.repository.TransactionRepository;
 import com.application.e_wallet.treasury.entity.RequestStatus;
+import com.application.e_wallet.treasury.entity.RequestType;
 import com.application.e_wallet.treasury.entity.TreasuryRequestEntity;
 import com.application.e_wallet.treasury.repository.TreasuryRequestRepository;
 import com.application.e_wallet.user.entity.UserEntity;
@@ -155,7 +156,8 @@ class DashboardServiceTest {
     void buildActionAlertsReportsFullPendingTotalsButCapsRecentRequestsListAtTen() {
         when(treasuryRequestRepository.countByStatus(RequestStatus.PENDING)).thenReturn(15L);
         when(treasuryRequestRepository.sumAmountByStatus(RequestStatus.PENDING)).thenReturn(new BigDecimal("2500000.00"));
-        TreasuryRequestEntity request = pendingRequest("45", "40512", "Kariakoo Wakala Point", "500000.00", "CI261116.0830.A11223");
+        TreasuryRequestEntity request = pendingRequest(
+                "45", "40512", "Kariakoo Wakala Point", "500000.00", "CI261116.0830.A11223", RequestType.WITHDRAWAL);
         when(treasuryRequestRepository.findTop10ByStatusOrderByCreatedAtDesc(RequestStatus.PENDING)).thenReturn(List.of(request));
         when(walletRepository.findByUserIdAndWalletType(request.getAgent().getUser().getId(), WalletType.AGENT_FLOAT))
                 .thenReturn(Optional.of(WalletEntity.builder().accountNumber("018492019482").build()));
@@ -167,6 +169,7 @@ class DashboardServiceTest {
         assertThat(result.pendingFloatRequests().totalRequestedAmount()).isEqualByComparingTo("2500000.00");
         assertThat(result.pendingFloatRequests().recentRequests()).hasSize(1);
         assertThat(result.pendingFloatRequests().recentRequests().get(0).floatAccountNumber()).isEqualTo("018492019482");
+        assertThat(result.pendingFloatRequests().recentRequests().get(0).requestType()).isEqualTo(RequestType.WITHDRAWAL);
     }
 
     @Test
@@ -184,7 +187,7 @@ class DashboardServiceTest {
     }
 
     @Test
-    void buildActionAlertsExcludesAgentExactlyAtThreshold() {
+    void buildActionAlertsPassesLowThresholdToRepositoryQuery() {
         stubNoPendingRequests();
         when(agentRepository.findLowFloatAgents(WalletType.AGENT_FLOAT, FloatHealth.LOW_THRESHOLD, AgentStatus.ACTIVE))
                 .thenReturn(List.of()); // the repository query itself enforces strict "<"; nothing at/above the threshold is ever returned
@@ -275,6 +278,12 @@ class DashboardServiceTest {
     // across test runs without needing to thread an explicit UUID through every call site.
     private static TreasuryRequestEntity pendingRequest(
             String idSeed, String agentCode, String businessName, String amount, String externalReference) {
+        return pendingRequest(idSeed, agentCode, businessName, amount, externalReference, RequestType.TOPUP);
+    }
+
+    private static TreasuryRequestEntity pendingRequest(
+            String idSeed, String agentCode, String businessName, String amount, String externalReference,
+            RequestType requestType) {
         UserEntity user = UserEntity.builder().id(UUID.randomUUID()).build();
         AgentEntity agent = AgentEntity.builder()
                 .id(UUID.randomUUID())
@@ -288,6 +297,7 @@ class DashboardServiceTest {
                 .agent(agent)
                 .amount(new BigDecimal(amount))
                 .externalReference(externalReference)
+                .requestType(requestType)
                 .status(RequestStatus.PENDING)
                 .createdAt(OffsetDateTime.now())
                 .build();

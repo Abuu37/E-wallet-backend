@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -45,8 +46,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DashboardService {
 
-    // Package-private: Tasks 5 and 6 reuse this zone and the DayWindow/today() helpers below
-    // verbatim when building their own "today" windows for other dashboard sections.
+    // Package-private so tests can reference the same zone the DayWindow/today() helpers below
+    // use when building "today" windows for the dashboard's day-scoped sections.
     static final ZoneId DASHBOARD_ZONE = ZoneId.of("Africa/Dar_es_Salaam");
 
     private final WalletRepository walletRepository;
@@ -56,20 +57,19 @@ public class DashboardService {
     private final AgentRepository agentRepository;
     private final CustomerRepository customerRepository;
 
-    // Package-private: later tasks reuse this window shape for other "today" dashboard sections.
+    // Package-private so every "today"-scoped section builder shares one window shape.
     record DayWindow(OffsetDateTime start, OffsetDateTime end) {
     }
 
-    // Package-private: later tasks reuse this to compute their own today-window.
+    // Package-private so tests can compute the same today-window the section builders use.
     static DayWindow today() {
         OffsetDateTime now = OffsetDateTime.now(DASHBOARD_ZONE);
         OffsetDateTime startOfDay = now.toLocalDate().atStartOfDay(DASHBOARD_ZONE).toOffsetDateTime();
         return new DayWindow(startOfDay, now);
     }
 
-    // Package-private: later tasks add more section-builder methods to this class and a
-    // public getOverview() wires them together, but their tests need to call this method
-    // directly before getOverview() exists.
+    // Package-private so tests can call this section builder directly without going through
+    // the public getOverview() entry point.
     LiquidityCards buildLiquidityCards() {
         BigDecimal totalDebits = transactionJournalLineRepository.sumAmountByEntryType(EntryType.DEBIT);
         BigDecimal totalCredits = transactionJournalLineRepository.sumAmountByEntryType(EntryType.CREDIT);
@@ -79,17 +79,18 @@ public class DashboardService {
         boolean isLedgerBalanced = totalDebits.compareTo(totalCredits) == 0;
 
         return new LiquidityCards(
-                walletRepository.sumBalanceByWalletType(WalletType.ESCROW_BANK),
-                walletRepository.sumBalanceByWalletType(WalletType.COMPANY_MASTER_ACCOUNT),
-                walletRepository.sumBalanceByWalletType(WalletType.REVENUE),
-                walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT),
-                walletRepository.sumBalanceByWalletType(WalletType.AGENT_COMMISSION),
-                walletRepository.sumBalanceByWalletType(WalletType.CUSTOMER_MAIN),
+                normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.ESCROW_BANK)),
+                normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.COMPANY_MASTER_ACCOUNT)),
+                normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.REVENUE)),
+                normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT)),
+                normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.AGENT_COMMISSION)),
+                normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.CUSTOMER_MAIN)),
                 isLedgerBalanced
         );
     }
 
-    // Package-private: Task 6 calls this directly when assembling the final overview response.
+    // Package-private so tests can call this section builder directly without going through
+    // the public getOverview() entry point.
     TodayTransactionMetrics buildTodayTransactionMetrics(DayWindow window) {
         List<TransactionEntity> transactions = transactionRepository.findByStatusAndCreatedAtBetween(
                 TransactionStatus.COMPLETED.name(), window.start(), window.end());
@@ -120,8 +121,9 @@ public class DashboardService {
         return summarize(filtered);
     }
 
-    // Package-private: Task 5 reuses this count+volume reduction for its own status-filtered
-    // transaction lists (pending/failed today) instead of re-filtering by type.
+    // Private static: shared count+volume reduction used both for type-filtered breakdown
+    // buckets and for status-filtered transaction lists (pending/failed today) that don't
+    // need to re-filter by type.
     private static TransactionTypeMetric summarize(List<TransactionEntity> transactions) {
         long count = 0;
         BigDecimal volume = BigDecimal.ZERO;
@@ -129,7 +131,7 @@ public class DashboardService {
             count++;
             volume = volume.add(transaction.getAmount());
         }
-        return new TransactionTypeMetric(count, volume);
+        return new TransactionTypeMetric(count, normalizeScale(volume));
     }
 
     private static List<HourlyTrendPoint> buildHourlyTrend(List<TransactionEntity> transactions, DayWindow window) {
@@ -151,19 +153,20 @@ public class DashboardService {
 
         List<HourlyTrendPoint> hourlyTrend = new ArrayList<>();
         for (int hour = 0; hour <= lastHour; hour++) {
-            hourlyTrend.add(new HourlyTrendPoint(String.format("%02d:00", hour), volumes[hour], counts[hour]));
+            hourlyTrend.add(new HourlyTrendPoint(String.format("%02d:00", hour), normalizeScale(volumes[hour]), counts[hour]));
         }
         return hourlyTrend;
     }
 
-    // Package-private: Task 6 calls this directly when assembling the final overview response.
+    // Package-private so tests can call this section builder directly without going through
+    // the public getOverview() entry point.
     ActionAlerts buildActionAlerts() {
         return new ActionAlerts(buildPendingFloatRequestsSummary(), buildLowFloatAgentsSummary());
     }
 
     private PendingFloatRequestsSummary buildPendingFloatRequestsSummary() {
         long count = treasuryRequestRepository.countByStatus(RequestStatus.PENDING);
-        BigDecimal totalRequestedAmount = treasuryRequestRepository.sumAmountByStatus(RequestStatus.PENDING);
+        BigDecimal totalRequestedAmount = normalizeScale(treasuryRequestRepository.sumAmountByStatus(RequestStatus.PENDING));
         List<TreasuryRequestEntity> recent =
                 treasuryRequestRepository.findTop10ByStatusOrderByCreatedAtDesc(RequestStatus.PENDING);
 
@@ -184,6 +187,7 @@ public class DashboardService {
                 request.getId(),
                 agent.getAgentNumber(),
                 agent.getBusinessName(),
+                request.getRequestType(),
                 wallet.getAccountNumber(),
                 request.getAmount(),
                 request.getExternalReference(),
@@ -207,10 +211,11 @@ public class DashboardService {
             ));
         }
 
-        return new LowFloatAgentsSummary(FloatHealth.LOW_THRESHOLD, agents.size(), agents);
+        return new LowFloatAgentsSummary(normalizeScale(FloatHealth.LOW_THRESHOLD), agents.size(), agents);
     }
 
-    // Package-private: Task 6 calls this directly when assembling the final overview response.
+    // Package-private so tests can call this section builder directly without going through
+    // the public getOverview() entry point.
     NetworkStats buildNetworkStats(DayWindow window) {
         long totalActiveAgents = agentRepository.countByAgentStatus(AgentStatus.ACTIVE);
         long totalActiveCustomers = customerRepository.countByStatus(CustomerStatus.ACTIVE);
@@ -234,5 +239,11 @@ public class DashboardService {
         return new DashboardOverviewResponse(
                 OffsetDateTime.now(DASHBOARD_ZONE), "TZS",
                 buildLiquidityCards(), buildTodayTransactionMetrics(window), buildActionAlerts(), buildNetworkStats(window));
+    }
+
+    // SUM(...) over no matching rows comes back via the COALESCE fallback, whose literal
+    // scale isn't guaranteed to match the NUMERIC(19,2) column scale across JPA providers.
+    private static BigDecimal normalizeScale(BigDecimal amount) {
+        return amount.setScale(2, RoundingMode.HALF_UP);
     }
 }

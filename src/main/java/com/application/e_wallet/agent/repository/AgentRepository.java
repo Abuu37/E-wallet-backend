@@ -26,6 +26,7 @@ public interface AgentRepository extends JpaRepository<AgentEntity, UUID> {
             FROM AgentEntity a
             JOIN WalletEntity w ON w.user.id = a.user.id
             WHERE w.walletType = :walletType AND w.balance < :threshold AND a.agentStatus = :agentStatus
+            ORDER BY w.balance ASC
             """)
     List<LowFloatAgentProjection> findLowFloatAgents(
             @Param("walletType") WalletType walletType,
