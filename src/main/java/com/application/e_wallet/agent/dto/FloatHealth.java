@@ -7,7 +7,7 @@ public enum FloatHealth {
     LOW,
     CRITICAL;
 
-    private static final BigDecimal LOW_THRESHOLD = new BigDecimal("100000");
+    public static final BigDecimal LOW_THRESHOLD = new BigDecimal("100000");
 
     public static FloatHealth fromBalance(BigDecimal currentBalance) {
         if (currentBalance.compareTo(BigDecimal.ZERO) <= 0) {

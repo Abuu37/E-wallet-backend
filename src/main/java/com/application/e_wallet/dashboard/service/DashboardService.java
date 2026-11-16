@@ -1,7 +1,17 @@
 package com.application.e_wallet.dashboard.service;
 
+import com.application.e_wallet.agent.dto.FloatHealth;
+import com.application.e_wallet.agent.entity.AgentEntity;
+import com.application.e_wallet.agent.entity.AgentStatus;
+import com.application.e_wallet.agent.repository.AgentRepository;
+import com.application.e_wallet.agent.repository.LowFloatAgentProjection;
+import com.application.e_wallet.dashboard.dto.ActionAlerts;
 import com.application.e_wallet.dashboard.dto.HourlyTrendPoint;
 import com.application.e_wallet.dashboard.dto.LiquidityCards;
+import com.application.e_wallet.dashboard.dto.LowFloatAgentItem;
+import com.application.e_wallet.dashboard.dto.LowFloatAgentsSummary;
+import com.application.e_wallet.dashboard.dto.PendingFloatRequestItem;
+import com.application.e_wallet.dashboard.dto.PendingFloatRequestsSummary;
 import com.application.e_wallet.dashboard.dto.TodayTransactionMetrics;
 import com.application.e_wallet.dashboard.dto.TransactionBreakdown;
 import com.application.e_wallet.dashboard.dto.TransactionTypeMetric;
@@ -11,6 +21,10 @@ import com.application.e_wallet.transaction.entity.TransactionEntity;
 import com.application.e_wallet.transaction.entity.TransactionStatus;
 import com.application.e_wallet.transaction.entity.TransactionType;
 import com.application.e_wallet.transaction.repository.TransactionRepository;
+import com.application.e_wallet.treasury.entity.RequestStatus;
+import com.application.e_wallet.treasury.entity.TreasuryRequestEntity;
+import com.application.e_wallet.treasury.repository.TreasuryRequestRepository;
+import com.application.e_wallet.wallet.entity.WalletEntity;
 import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +35,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +48,8 @@ public class DashboardService {
     private final WalletRepository walletRepository;
     private final TransactionJournalLineRepository transactionJournalLineRepository;
     private final TransactionRepository transactionRepository;
+    private final TreasuryRequestRepository treasuryRequestRepository;
+    private final AgentRepository agentRepository;
 
     // Package-private: later tasks reuse this window shape for other "today" dashboard sections.
     record DayWindow(OffsetDateTime start, OffsetDateTime end) {
@@ -125,5 +142,59 @@ public class DashboardService {
             hourlyTrend.add(new HourlyTrendPoint(String.format("%02d:00", hour), volumes[hour], counts[hour]));
         }
         return hourlyTrend;
+    }
+
+    // Package-private: Task 6 calls this directly when assembling the final overview response.
+    ActionAlerts buildActionAlerts() {
+        return new ActionAlerts(buildPendingFloatRequestsSummary(), buildLowFloatAgentsSummary());
+    }
+
+    private PendingFloatRequestsSummary buildPendingFloatRequestsSummary() {
+        long count = treasuryRequestRepository.countByStatus(RequestStatus.PENDING);
+        BigDecimal totalRequestedAmount = treasuryRequestRepository.sumAmountByStatus(RequestStatus.PENDING);
+        List<TreasuryRequestEntity> recent =
+                treasuryRequestRepository.findTop10ByStatusOrderByCreatedAtDesc(RequestStatus.PENDING);
+
+        List<PendingFloatRequestItem> recentRequests = new ArrayList<>();
+        for (TreasuryRequestEntity request : recent) {
+            recentRequests.add(toPendingFloatRequestItem(request));
+        }
+
+        return new PendingFloatRequestsSummary(count, totalRequestedAmount, recentRequests);
+    }
+
+    private PendingFloatRequestItem toPendingFloatRequestItem(TreasuryRequestEntity request) {
+        AgentEntity agent = request.getAgent();
+        Optional<WalletEntity> wallet =
+                walletRepository.findByUserIdAndWalletType(agent.getUser().getId(), WalletType.AGENT_FLOAT);
+
+        return new PendingFloatRequestItem(
+                request.getId(),
+                agent.getAgentNumber(),
+                agent.getBusinessName(),
+                wallet.map(WalletEntity::getAccountNumber).orElse(null),
+                request.getAmount(),
+                request.getExternalReference(),
+                request.getCreatedAt()
+        );
+    }
+
+    private LowFloatAgentsSummary buildLowFloatAgentsSummary() {
+        List<LowFloatAgentProjection> projections =
+                agentRepository.findLowFloatAgents(WalletType.AGENT_FLOAT, FloatHealth.LOW_THRESHOLD, AgentStatus.ACTIVE);
+
+        List<LowFloatAgentItem> agents = new ArrayList<>();
+        for (LowFloatAgentProjection projection : projections) {
+            agents.add(new LowFloatAgentItem(
+                    projection.getAgentId(),
+                    projection.getAgentCode(),
+                    projection.getBusinessName(),
+                    projection.getPhoneNumber(),
+                    projection.getFloatAccountNumber(),
+                    projection.getCurrentBalance()
+            ));
+        }
+
+        return new LowFloatAgentsSummary(FloatHealth.LOW_THRESHOLD, agents.size(), agents);
     }
 }

@@ -23,6 +23,8 @@ public interface TreasuryRequestRepository extends JpaRepository<TreasuryRequest
 
     long countByStatus(RequestStatus status);
 
+    List<TreasuryRequestEntity> findTop10ByStatusOrderByCreatedAtDesc(RequestStatus status);
+
     @Query("SELECT COALESCE(SUM(r.amount), 0) FROM TreasuryRequestEntity r WHERE r.status = :status")
     BigDecimal sumAmountByStatus(@Param("status") RequestStatus status);
 

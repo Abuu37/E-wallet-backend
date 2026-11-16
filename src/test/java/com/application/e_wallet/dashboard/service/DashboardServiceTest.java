@@ -1,11 +1,21 @@
 package com.application.e_wallet.dashboard.service;
 
+import com.application.e_wallet.agent.dto.FloatHealth;
+import com.application.e_wallet.agent.entity.AgentEntity;
+import com.application.e_wallet.agent.entity.AgentStatus;
+import com.application.e_wallet.agent.repository.AgentRepository;
+import com.application.e_wallet.dashboard.dto.ActionAlerts;
 import com.application.e_wallet.dashboard.dto.LiquidityCards;
 import com.application.e_wallet.dashboard.dto.TodayTransactionMetrics;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
 import com.application.e_wallet.transaction.entity.TransactionEntity;
 import com.application.e_wallet.transaction.repository.TransactionRepository;
+import com.application.e_wallet.treasury.entity.RequestStatus;
+import com.application.e_wallet.treasury.entity.TreasuryRequestEntity;
+import com.application.e_wallet.treasury.repository.TreasuryRequestRepository;
+import com.application.e_wallet.user.entity.UserEntity;
+import com.application.e_wallet.wallet.entity.WalletEntity;
 import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import org.junit.jupiter.api.Test;
@@ -17,6 +27,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,6 +39,8 @@ class DashboardServiceTest {
     @Mock private WalletRepository walletRepository;
     @Mock private TransactionJournalLineRepository transactionJournalLineRepository;
     @Mock private TransactionRepository transactionRepository;
+    @Mock private TreasuryRequestRepository treasuryRequestRepository;
+    @Mock private AgentRepository agentRepository;
     @InjectMocks private DashboardService dashboardService;
 
     @Test
@@ -129,6 +143,48 @@ class DashboardServiceTest {
         assertThat(result.hourlyTrend()).hasSize(1); // just "00:00"
     }
 
+    @Test
+    void buildActionAlertsReportsFullPendingTotalsButCapsRecentRequestsListAtTen() {
+        when(treasuryRequestRepository.countByStatus(RequestStatus.PENDING)).thenReturn(15L);
+        when(treasuryRequestRepository.sumAmountByStatus(RequestStatus.PENDING)).thenReturn(new BigDecimal("2500000.00"));
+        TreasuryRequestEntity request = pendingRequest("45", "40512", "Kariakoo Wakala Point", "500000.00", "CI261116.0830.A11223");
+        when(treasuryRequestRepository.findTop10ByStatusOrderByCreatedAtDesc(RequestStatus.PENDING)).thenReturn(List.of(request));
+        when(walletRepository.findByUserIdAndWalletType(request.getAgent().getUser().getId(), WalletType.AGENT_FLOAT))
+                .thenReturn(Optional.of(WalletEntity.builder().accountNumber("018492019482").build()));
+        stubNoLowFloatAgents();
+
+        ActionAlerts result = dashboardService.buildActionAlerts();
+
+        assertThat(result.pendingFloatRequests().count()).isEqualTo(15);
+        assertThat(result.pendingFloatRequests().totalRequestedAmount()).isEqualByComparingTo("2500000.00");
+        assertThat(result.pendingFloatRequests().recentRequests()).hasSize(1);
+        assertThat(result.pendingFloatRequests().recentRequests().get(0).floatAccountNumber()).isEqualTo("018492019482");
+    }
+
+    @Test
+    void buildActionAlertsExcludesAgentExactlyAtThreshold() {
+        stubNoPendingRequests();
+        when(agentRepository.findLowFloatAgents(WalletType.AGENT_FLOAT, FloatHealth.LOW_THRESHOLD, AgentStatus.ACTIVE))
+                .thenReturn(List.of()); // the repository query itself enforces strict "<"; nothing at/above the threshold is ever returned
+
+        ActionAlerts result = dashboardService.buildActionAlerts();
+
+        assertThat(result.lowFloatAgents().count()).isZero();
+        assertThat(result.lowFloatAgents().threshold()).isEqualByComparingTo(FloatHealth.LOW_THRESHOLD);
+    }
+
+    @Test
+    void buildActionAlertsHandlesNoPendingRequestsAndNoLowFloatAgents() {
+        stubNoPendingRequests();
+        stubNoLowFloatAgents();
+
+        ActionAlerts result = dashboardService.buildActionAlerts();
+
+        assertThat(result.pendingFloatRequests().count()).isZero();
+        assertThat(result.pendingFloatRequests().recentRequests()).isEmpty();
+        assertThat(result.lowFloatAgents().agents()).isEmpty();
+    }
+
     private static TransactionEntity transaction(String type, String status, String amount, String createdAtIso) {
         return TransactionEntity.builder()
                 .transactionType(type)
@@ -136,5 +192,38 @@ class DashboardServiceTest {
                 .amount(new BigDecimal(amount))
                 .createdAt(OffsetDateTime.parse(createdAtIso))
                 .build();
+    }
+
+    // idSeed deterministically derives the request's id so fixtures stay stable/debuggable
+    // across test runs without needing to thread an explicit UUID through every call site.
+    private static TreasuryRequestEntity pendingRequest(
+            String idSeed, String agentCode, String businessName, String amount, String externalReference) {
+        UserEntity user = UserEntity.builder().id(UUID.randomUUID()).build();
+        AgentEntity agent = AgentEntity.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .agentNumber(agentCode)
+                .businessName(businessName)
+                .build();
+
+        return TreasuryRequestEntity.builder()
+                .id(UUID.nameUUIDFromBytes(idSeed.getBytes()))
+                .agent(agent)
+                .amount(new BigDecimal(amount))
+                .externalReference(externalReference)
+                .status(RequestStatus.PENDING)
+                .createdAt(OffsetDateTime.now())
+                .build();
+    }
+
+    private void stubNoPendingRequests() {
+        when(treasuryRequestRepository.countByStatus(RequestStatus.PENDING)).thenReturn(0L);
+        when(treasuryRequestRepository.sumAmountByStatus(RequestStatus.PENDING)).thenReturn(BigDecimal.ZERO);
+        when(treasuryRequestRepository.findTop10ByStatusOrderByCreatedAtDesc(RequestStatus.PENDING)).thenReturn(List.of());
+    }
+
+    private void stubNoLowFloatAgents() {
+        when(agentRepository.findLowFloatAgents(WalletType.AGENT_FLOAT, FloatHealth.LOW_THRESHOLD, AgentStatus.ACTIVE))
+                .thenReturn(List.of());
     }
 }
