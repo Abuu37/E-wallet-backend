@@ -8,6 +8,7 @@ import com.application.e_wallet.agent.repository.LowFloatAgentProjection;
 import com.application.e_wallet.customer.entity.CustomerStatus;
 import com.application.e_wallet.customer.repository.CustomerRepository;
 import com.application.e_wallet.dashboard.dto.ActionAlerts;
+import com.application.e_wallet.dashboard.dto.DashboardOverviewResponse;
 import com.application.e_wallet.dashboard.dto.HourlyTrendPoint;
 import com.application.e_wallet.dashboard.dto.LiquidityCards;
 import com.application.e_wallet.dashboard.dto.LowFloatAgentItem;
@@ -32,6 +33,7 @@ import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -224,5 +226,13 @@ public class DashboardService {
                 summarize(pendingTransactions),
                 summarize(failedTransactions)
         );
+    }
+
+    @Transactional(readOnly = true)
+    public DashboardOverviewResponse getOverview() {
+        DayWindow window = today();
+        return new DashboardOverviewResponse(
+                OffsetDateTime.now(DASHBOARD_ZONE), "TZS",
+                buildLiquidityCards(), buildTodayTransactionMetrics(window), buildActionAlerts(), buildNetworkStats(window));
     }
 }

@@ -7,6 +7,7 @@ import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.customer.entity.CustomerStatus;
 import com.application.e_wallet.customer.repository.CustomerRepository;
 import com.application.e_wallet.dashboard.dto.ActionAlerts;
+import com.application.e_wallet.dashboard.dto.DashboardOverviewResponse;
 import com.application.e_wallet.dashboard.dto.LiquidityCards;
 import com.application.e_wallet.dashboard.dto.NetworkStats;
 import com.application.e_wallet.dashboard.dto.TodayTransactionMetrics;
@@ -29,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,6 +38,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -224,6 +227,39 @@ class DashboardServiceTest {
         assertThat(result.pendingTransactionsToday().volume()).isEqualByComparingTo("30000.00");
         assertThat(result.failedTransactionsToday().count()).isZero();
         assertThat(result.failedTransactionsToday().volume()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void getOverviewAssemblesAllFourSectionsWithFixedCurrencyAndZoneTimestamp() {
+        // Stub every repository call each buildXxx method needs (same stubs as their individual tests,
+        // combined) so getOverview() runs end-to-end without NPEs.
+
+        // buildLiquidityCards()
+        when(walletRepository.sumBalanceByWalletType(any())).thenReturn(BigDecimal.ZERO);
+        when(transactionJournalLineRepository.sumAmountByEntryType(EntryType.DEBIT)).thenReturn(new BigDecimal("100000.00"));
+        when(transactionJournalLineRepository.sumAmountByEntryType(EntryType.CREDIT)).thenReturn(new BigDecimal("100000.00"));
+
+        // buildTodayTransactionMetrics(window) and buildNetworkStats(window)
+        when(transactionRepository.findByStatusAndCreatedAtBetween(eq("COMPLETED"), any(), any())).thenReturn(List.of());
+        when(transactionRepository.findByStatusAndCreatedAtBetween(eq("PENDING"), any(), any())).thenReturn(List.of());
+        when(transactionRepository.findByStatusAndCreatedAtBetween(eq("FAILED"), any(), any())).thenReturn(List.of());
+
+        // buildActionAlerts()
+        stubNoPendingRequests();
+        stubNoLowFloatAgents();
+
+        // buildNetworkStats(window)
+        when(agentRepository.countByAgentStatus(AgentStatus.ACTIVE)).thenReturn(85L);
+        when(customerRepository.countByStatus(CustomerStatus.ACTIVE)).thenReturn(1420L);
+
+        DashboardOverviewResponse result = dashboardService.getOverview();
+
+        assertThat(result.currency()).isEqualTo("TZS");
+        assertThat(result.timestamp().getOffset()).isEqualTo(ZoneOffset.ofHours(3));
+        assertThat(result.liquidityCards()).isNotNull();
+        assertThat(result.todayTransactionMetrics()).isNotNull();
+        assertThat(result.actionAlerts()).isNotNull();
+        assertThat(result.networkStats()).isNotNull();
     }
 
     private static TransactionEntity transaction(String type, String status, String amount, String createdAtIso) {
