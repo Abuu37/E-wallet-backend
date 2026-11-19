@@ -37,4 +37,8 @@ public interface WalletRepository extends JpaRepository<WalletEntity, UUID> {
     Optional<WalletEntity> findByAccountNumber(String accountNumber);
 
     boolean existsByAccountNumber(String accountNumber);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT w FROM WalletEntity w WHERE w.accountNumber = :accountNumber")
+    Optional<WalletEntity> findByAccountNumberForUpdate(@Param("accountNumber") String accountNumber);
 }

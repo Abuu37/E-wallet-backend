@@ -3,12 +3,9 @@ package com.application.e_wallet.auth.service;
 import com.application.e_wallet.auth.dto.*;
 import com.application.e_wallet.auth.entity.UserSessionEntity;
 import com.application.e_wallet.auth.repository.UserSessionRepository;
-import com.application.e_wallet.common.event.UserRegisteredEvent;
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.service.CustomerService;
 import com.application.e_wallet.permission.entity.PermissionEntity;
-import com.application.e_wallet.role.entity.RoleEntity;
-import com.application.e_wallet.role.repository.RoleRepository;
 import com.application.e_wallet.security.jwt.JwtProperties;
 import com.application.e_wallet.security.jwt.JwtService;
 import com.application.e_wallet.user.entity.UserEntity;
@@ -16,17 +13,16 @@ import com.application.e_wallet.user.entity.UserStatus;
 import com.application.e_wallet.user.repository.UserRepository;
 import com.application.e_wallet.common.exception.AuthenticationException;
 import com.application.e_wallet.common.exception.BadRequestException;
-import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.otp.entity.OtpVerificationEntity;
 import com.application.e_wallet.otp.repository.OtpVerificationRepository;
 import com.application.e_wallet.otp.service.EmailService;
+import com.application.e_wallet.wallet.entity.WalletEntity;
 import com.application.e_wallet.wallet.service.WalletService;
 import io.jsonwebtoken.JwtException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -42,9 +38,7 @@ import java.util.List;
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final PasswordEncoder pinEncoder;
-    private final ApplicationEventPublisher eventPublisher;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
     private final CustomerService customerService;
@@ -59,49 +53,6 @@ public class AuthService {
     // How long after OTP verification the user has to call set-pin before they must re-verify.
     private static final long PIN_SETUP_WINDOW_MINUTES = 15;
 
-    @Transactional
-    public RegistrationResponse registerCustomer(CustomerRegistrationRequest request){
-
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicationResourceException("Email already exists");
-        }
-
-        String normalizedPhone = phoneNumberNormalizer.normalize(request.getPhone());
-
-        if (userRepository.existsByPhone(normalizedPhone)) {
-            throw new DuplicationResourceException("Phone already exists");
-        }
-
-        if (userRepository.existsByLoginUsername(request.getUsername().trim())) {
-            throw new DuplicationResourceException("Username already exists");
-        }
-
-        RoleEntity customerRole = roleRepository
-                .findByName("CUSTOMER")
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "CUSTOMER role not found"
-                        ));
-
-        UserEntity user = UserEntity.builder()
-                .loginUsername(request.getUsername().trim())
-                .email(request.getEmail().trim().toLowerCase())
-                .phone(normalizedPhone)
-                .status(UserStatus.PENDING)
-                .role(customerRole)
-                .build();
-
-        UserEntity savedUser = userRepository.save(user);  //======== user save in database ======
-
-        customerService.createCustomer(savedUser, request); //=== Customer account  created ====
-
-        eventPublisher.publishEvent(new UserRegisteredEvent(savedUser.getId(), savedUser.getEmail()));
-
-        return RegistrationResponse.builder()
-                .userId(savedUser.getId())
-                .status(savedUser.getStatus())
-                .build();
-    }
 
     /**
      * SET PIN — completes registration once the email has been OTP-verified.
@@ -136,7 +87,7 @@ public class AuthService {
 
         if (windowExpired) {
             // Self-healing: drop back to PENDING so resend-otp is reachable again.
-            user.setStatus(UserStatus.PENDING);
+            user.setStatus(UserStatus.AWAITING_PIN);
             userRepository.save(user);
 
             throw new BadRequestException(
@@ -148,18 +99,28 @@ public class AuthService {
         user.setStatus(UserStatus.ACTIVE);
         userRepository.save(user);
         CustomerEntity customer = customerService.activateCustomer(user.getId());
-        walletService.createWallet(customer);
+        WalletEntity wallet = walletService.createWallet(customer);
 
-        emailService.sendPinSetConfirmation(user.getEmail());
+        emailService.sendPinSetConfirmation(user.getEmail()); // email pin confirmation
 
         return UserProfileResponse.builder()
-                .userId(user.getId())
+                .customerId(customer.getId())
                 .firstName(customer.getFirstName())
                 .middleName(customer.getMiddleName())
                 .lastName(customer.getLastName())
+                .phoneNumber(user.getPhone())
                 .email(user.getEmail())
-                .phone(user.getPhone())
+                .nidaNumber(customer.getNidaNumber())
+                .dateOfBirth(customer.getDateOfBirth())
+                .address(customer.getAddress())
                 .status(user.getStatus())
+                .wallet(UserProfileResponse.WalletSummary.builder()
+                        .accountNumber(wallet.getAccountNumber())
+                        .walletType(wallet.getWalletType())
+                        .balance(wallet.getBalance())
+                        .currency(wallet.getCurrency())
+                        .build())
+                .createdAt(user.getCreatedAt())
                 .build();
     }
 
@@ -173,10 +134,7 @@ public class AuthService {
 
         UserEntity user = userRepository
                 .findByPhone(normalizedPhone)
-                .orElseThrow(() ->
-                        new AuthenticationException(
-                                "Invalid credentials"
-                        ));
+                .orElseThrow(() -> new AuthenticationException("Invalid credentials"));
 
         accountStatusService.validateLoginStatus(user); // check account status
 
@@ -293,10 +251,7 @@ public class AuthService {
 
         UserEntity user = userRepository.findByEmail(email)
                 .orElseThrow(() ->
-                        new AuthenticationException(
-                                "User account not found"
-                        )
-                );
+                        new AuthenticationException("User account not found"));
 
         boolean active = user.getStatus() == UserStatus.ACTIVE;
 
@@ -313,11 +268,7 @@ public class AuthService {
     public void changePin(String email, ChangePinRequest request){
 
         UserEntity userEntity = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new AuthenticationException(
-                                "User account not found"
-                        )
-                );
+                .orElseThrow(() -> new AuthenticationException("User account not found"));
 
         accountStatusService.validateLoginStatus(userEntity);
 
@@ -332,47 +283,36 @@ public class AuthService {
                     "New PIN must be different from current PIN"
             );
         }
-
-        userEntity.setPinHash(
-                pinEncoder.encode(request.getNewPin())
-        );
+        userEntity.setPinHash( pinEncoder.encode(request.getNewPin()));
 
         if (userEntity.getStatus() == UserStatus.PIN_CHANGE_REQUIRED) {
             userEntity.setStatus(UserStatus.ACTIVE);
         }
-
         userRepository.save(userEntity);
-
-        // PIN changed — kill every refresh session so a stolen token
-        // can't keep issuing new access tokens.
         userSessionRepository.deleteAllByUserId(userEntity.getId());
     }
 
+    //================= logout ====================
     @Transactional
    public void logout(String email, String refreshToken){
 
         UserEntity user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new AuthenticationException("User account not found"));
+                .orElseThrow(() -> new AuthenticationException("User account not found"));
 
         String tokenHash = refreshTokenHashService.hash(refreshToken);
 
         UserSessionEntity session = userSessionRepository
                 .findByRefreshTokenHash(tokenHash)
-                .orElseThrow(() ->
-                        new AuthenticationException("Invalid refresh token"));
+                .orElseThrow(() -> new AuthenticationException("Invalid refresh token"));
 
         if (!session.getUser().getId().equals(user.getId())) {
             throw new AuthenticationException("Invalid refresh token");
         }
-
         if (session.isRevoked()) {
             throw new AuthenticationException("Session is revoked");
         }
-
         session.setRevoked(true);
         session.setRevokedAt(OffsetDateTime.now());
-
         userSessionRepository.save(session);
 
    }

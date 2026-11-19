@@ -116,12 +116,14 @@ class TreasuryServiceTest {
         lenient().when(treasuryRequestRepository.sumAmountByStatus(any())).thenReturn(BigDecimal.ZERO);
         lenient().when(treasuryRequestRepository.countByStatus(any())).thenReturn(0L);
 
-        TreasuryOverviewResponse overview = treasuryService.getOverview();
+        TreasuryOverviewResponse overview = treasuryService.getOverview("admin@e-wallet.com");
 
         assertThat(overview.walletId()).isEqualTo(companyWallet.getId());
         assertThat(overview.currency()).isEqualTo("TZS");
         assertThat(overview.unallocatedFloat()).isEqualByComparingTo(new BigDecimal("1000.00"));
         assertThat(overview.totalDistributedFloat()).isEqualByComparingTo(new BigDecimal("500.00"));
+        assertThat(overview.createdBy()).isEqualTo("admin@e-wallet.com");
+        assertThat(overview.createdAt()).isNotNull();
     }
 
     @Test

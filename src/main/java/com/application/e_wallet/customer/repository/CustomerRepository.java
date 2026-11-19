@@ -2,6 +2,8 @@ package com.application.e_wallet.customer.repository;
 
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.entity.CustomerStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 
@@ -14,7 +16,7 @@ public interface CustomerRepository extends JpaRepository<CustomerEntity, UUID> 
 
     Optional<CustomerEntity> findByUserId(UUID userId);
 
-    Optional<CustomerEntity> findByCustomerNumber(String customerNumber);
+    Page<CustomerEntity> findByStatus(CustomerStatus status, Pageable pageable);
 
     long countByStatus(CustomerStatus status);
 }

@@ -23,11 +23,7 @@ public class AccountStatusService {
             case PIN_CHANGE_REQUIRED -> {
                 // CAN CONTINUE — must log in with the one-time PIN to change it via changePin()
             }
-            case PENDING -> {
-                throw new AuthenticationException(
-                        "Account is pending "
-                );
-            }
+
             case AWAITING_PIN -> {
                 throw new AuthenticationException(
                         "Account setup is incomplete — please set your PIN"

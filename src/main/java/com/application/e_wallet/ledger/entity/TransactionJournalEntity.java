@@ -27,7 +27,7 @@ public class TransactionJournalEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "transaction_type", nullable = false, length = 30)
-    private TransactionType transactionType;
+    private LedgerTransactionType transactionType;
 
     @Column(nullable = false)
     private String description;

@@ -61,8 +61,8 @@ class WalletServiceTest {
 
         assertThat(wallet.getWalletType()).isEqualTo(WalletType.CUSTOMER_MAIN);
         assertThat(wallet.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
-        // "01" + 8 digits + 2 letters = 12 characters, per the agreed customer account format.
-        assertThat(wallet.getAccountNumber()).matches("01\\d{8}[A-Z]{2}");
+        // "03" lead + 10 digits = 12 digits, per the agreed customer account format.
+        assertThat(wallet.getAccountNumber()).matches("03\\d{10}");
         assertThat(wallet.getAccountName()).isEqualTo("Jane Doe");
     }
 

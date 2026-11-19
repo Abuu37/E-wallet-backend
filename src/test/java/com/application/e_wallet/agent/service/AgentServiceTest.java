@@ -1,11 +1,13 @@
 package com.application.e_wallet.agent.service;
 
 import com.application.e_wallet.agent.dto.AgentCreationRequest;
+import com.application.e_wallet.agent.dto.AgentStatusUpdateRequest;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.entity.Gender;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.auth.repository.UserSessionRepository;
+import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
@@ -30,6 +32,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.math.BigDecimal;
@@ -174,5 +179,159 @@ class AgentServiceTest {
 
         verify(walletRepository, org.mockito.Mockito.times(2))
                 .save(org.mockito.ArgumentMatchers.argThat(w -> w.getStatus() == WalletStatus.CLOSED));
+    }
+
+    @Test
+    void listAgentsWithNoStatusFilterUsesFindAll() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(agentRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of()));
+
+        agentService.listAgents(pageable, null);
+
+        verify(agentRepository).findAll(pageable);
+        verify(agentRepository, never()).findByAgentStatus(any(), any());
+    }
+
+    @Test
+    void listAgentsWithStatusFilterUsesTheStatusScopedQueryNotFindAll() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(agentRepository.findByAgentStatus(AgentStatus.SUSPENDED, pageable)).thenReturn(new PageImpl<>(List.of()));
+
+        agentService.listAgents(pageable, AgentStatus.SUSPENDED);
+
+        verify(agentRepository).findByAgentStatus(AgentStatus.SUSPENDED, pageable);
+        verify(agentRepository, never()).findAll(any(Pageable.class));
+    }
+
+    @Test
+    void updateAgentStatusToSuspendedSetsWalletsAndUserSuspendedAndKillsSessions() {
+        UUID agentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        UserEntity user = UserEntity.builder().id(userId).status(UserStatus.ACTIVE).build();
+        AgentEntity agent = AgentEntity.builder().id(agentId).user(user).agentStatus(AgentStatus.ACTIVE)
+                .region(RegionEntity.builder().id(UUID.randomUUID()).externalId("TZ01").name("Dar").build())
+                .district(DistrictEntity.builder().id(UUID.randomUUID()).externalId("TZ0101").name("Ilala").build())
+                .build();
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(agentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        WalletEntity floatWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).user(user).walletType(WalletType.AGENT_FLOAT)
+                .balance(BigDecimal.ZERO).status(WalletStatus.ACTIVE).build();
+        WalletEntity commissionWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).user(user).walletType(WalletType.AGENT_COMMISSION)
+                .balance(BigDecimal.ZERO).status(WalletStatus.ACTIVE).build();
+
+        when(walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_FLOAT))
+                .thenReturn(Optional.of(floatWallet));
+        when(walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_COMMISSION))
+                .thenReturn(Optional.of(commissionWallet));
+
+        var response = agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.SUSPENDED));
+
+        assertThat(response.status()).isEqualTo(AgentStatus.SUSPENDED.name());
+        assertThat(user.getStatus()).isEqualTo(UserStatus.SUSPENDED);
+        assertThat(floatWallet.getStatus()).isEqualTo(WalletStatus.SUSPENDED);
+        assertThat(commissionWallet.getStatus()).isEqualTo(WalletStatus.SUSPENDED);
+        verify(userSessionRepository).deleteAllByUserId(userId);
+    }
+
+    @Test
+    void updateAgentStatusBackToActiveDoesNotKillSessions() {
+        UUID agentId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        UserEntity user = UserEntity.builder().id(userId).status(UserStatus.SUSPENDED).build();
+        AgentEntity agent = AgentEntity.builder().id(agentId).user(user).agentStatus(AgentStatus.SUSPENDED)
+                .region(RegionEntity.builder().id(UUID.randomUUID()).externalId("TZ01").name("Dar").build())
+                .district(DistrictEntity.builder().id(UUID.randomUUID()).externalId("TZ0101").name("Ilala").build())
+                .build();
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(agentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        WalletEntity floatWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).user(user).walletType(WalletType.AGENT_FLOAT)
+                .balance(BigDecimal.ZERO).status(WalletStatus.SUSPENDED).build();
+        WalletEntity commissionWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).user(user).walletType(WalletType.AGENT_COMMISSION)
+                .balance(BigDecimal.ZERO).status(WalletStatus.SUSPENDED).build();
+
+        when(walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_FLOAT))
+                .thenReturn(Optional.of(floatWallet));
+        when(walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_COMMISSION))
+                .thenReturn(Optional.of(commissionWallet));
+
+        var response = agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.ACTIVE));
+
+        assertThat(response.status()).isEqualTo(AgentStatus.ACTIVE.name());
+        assertThat(floatWallet.getStatus()).isEqualTo(WalletStatus.ACTIVE);
+        verify(userSessionRepository, never()).deleteAllByUserId(any());
+    }
+
+    @Test
+    void updateAgentStatusIsANoOpWhenAlreadyInTheRequestedStatus() {
+        UUID agentId = UUID.randomUUID();
+        UserEntity user = UserEntity.builder().id(UUID.randomUUID()).status(UserStatus.ACTIVE).build();
+        AgentEntity agent = AgentEntity.builder().id(agentId).user(user).agentStatus(AgentStatus.ACTIVE)
+                .region(RegionEntity.builder().id(UUID.randomUUID()).externalId("TZ01").name("Dar").build())
+                .district(DistrictEntity.builder().id(UUID.randomUUID()).externalId("TZ0101").name("Ilala").build())
+                .build();
+
+        when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
+        when(agentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.ACTIVE));
+
+        verify(userRepository, never()).save(any());
+        verify(walletRepository, never()).findByUserIdAndWalletType(any(), any());
+        verify(userSessionRepository, never()).deleteAllByUserId(any());
+    }
+
+    @Test
+    void getOwnProfileResolvesTheAgentByCallerUserIdNotByAgentId() {
+        UUID callerUserId = UUID.randomUUID();
+        UserEntity user = UserEntity.builder().id(callerUserId).build();
+        AgentEntity agent = AgentEntity.builder().id(UUID.randomUUID()).user(user)
+                .agentNumber("40625").businessName("Ilala Mchikichini Wakala").agentStatus(AgentStatus.ACTIVE)
+                .region(RegionEntity.builder().id(UUID.randomUUID()).externalId("TZ01").name("Dar").build())
+                .district(DistrictEntity.builder().id(UUID.randomUUID()).externalId("TZ0101").name("Ilala").build())
+                .build();
+
+        WalletEntity floatWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).accountNumber("019482716350")
+                .balance(new BigDecimal("750000.00")).status(WalletStatus.ACTIVE).build();
+        WalletEntity commissionWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).accountNumber("025819304721")
+                .balance(new BigDecimal("18500.00")).status(WalletStatus.ACTIVE).build();
+
+        when(agentRepository.findByUserId(callerUserId)).thenReturn(Optional.of(agent));
+        when(walletRepository.findByUserIdAndWalletType(callerUserId, WalletType.AGENT_FLOAT))
+                .thenReturn(Optional.of(floatWallet));
+        when(walletRepository.findByUserIdAndWalletType(callerUserId, WalletType.AGENT_COMMISSION))
+                .thenReturn(Optional.of(commissionWallet));
+
+        var response = agentService.getOwnProfile(callerUserId);
+
+        assertThat(response.agentId()).isEqualTo(agent.getId());
+        assertThat(response.agentNumber()).isEqualTo("40625");
+        assertThat(response.floatAccount().accountNumber()).isEqualTo("019482716350");
+        assertThat(response.commissionAccount().accountNumber()).isEqualTo("025819304721");
+        verify(agentRepository, never()).findById(any());
+    }
+
+    @Test
+    void getOwnProfileThrowsWhenCallerHasNoAgentProfile() {
+        UUID callerUserId = UUID.randomUUID();
+        when(agentRepository.findByUserId(callerUserId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> agentService.getOwnProfile(callerUserId))
+                .isInstanceOf(BadRequestException.class);
     }
 }

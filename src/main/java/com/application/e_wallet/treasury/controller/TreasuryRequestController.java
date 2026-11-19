@@ -4,23 +4,21 @@ import com.application.e_wallet.common.dto.ApiResponse;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
 import com.application.e_wallet.treasury.dto.TreasuryRequestCreateRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestDecisionRequest;
+import com.application.e_wallet.treasury.dto.TreasuryRequestListResponse;
 import com.application.e_wallet.treasury.dto.TreasuryRequestResponse;
+import com.application.e_wallet.treasury.entity.RequestStatus;
 import com.application.e_wallet.treasury.service.TreasuryRequestService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -52,11 +50,17 @@ public class TreasuryRequestController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('FLOAT_VIEW')")
-    public ResponseEntity<ApiResponse<List<TreasuryRequestResponse>>> listRequests(Authentication authentication) {
+    public ResponseEntity<ApiResponse<TreasuryRequestListResponse>> listRequests(
+            @RequestParam(required = false) RequestStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication
+    ) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        List<TreasuryRequestResponse> response = treasuryRequestService.listRequests(principal.userId(), canManage(authentication));
+        Pageable pageable = PageRequest.of(page, size);
+        TreasuryRequestListResponse response = treasuryRequestService.listRequests(principal.userId(), canManage(authentication), status, pageable);
 
-        ApiResponse<List<TreasuryRequestResponse>> body = ApiResponse.<List<TreasuryRequestResponse>>builder()
+        ApiResponse<TreasuryRequestListResponse> body = ApiResponse.<TreasuryRequestListResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
                 .message("Float requests retrieved successfully.")
@@ -66,12 +70,11 @@ public class TreasuryRequestController {
         return ResponseEntity.ok(body);
     }
 
+
     @GetMapping("/{requestId}")
     @PreAuthorize("hasAuthority('FLOAT_VIEW')")
-    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> getRequest(
-            @PathVariable UUID requestId,
-            Authentication authentication
-    ) {
+    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> getRequest(@PathVariable UUID requestId, Authentication authentication) {
+
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         TreasuryRequestResponse response = treasuryRequestService.getRequest(requestId, principal.userId(), canManage(authentication));
 

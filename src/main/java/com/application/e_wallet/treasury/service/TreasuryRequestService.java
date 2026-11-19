@@ -3,9 +3,12 @@ package com.application.e_wallet.treasury.service;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
+import com.application.e_wallet.treasury.dto.RequestStatusSummary;
 import com.application.e_wallet.treasury.dto.TreasuryRequestCreateRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestDecisionRequest;
+import com.application.e_wallet.treasury.dto.TreasuryRequestListResponse;
 import com.application.e_wallet.treasury.dto.TreasuryRequestResponse;
+import com.application.e_wallet.treasury.dto.TreasuryRequestsSummary;
 import com.application.e_wallet.treasury.entity.RequestStatus;
 import com.application.e_wallet.treasury.entity.RequestType;
 import com.application.e_wallet.treasury.entity.TreasuryRequestEntity;
@@ -18,10 +21,12 @@ import com.application.e_wallet.wallet.entity.WalletEntity;
 import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -70,26 +75,57 @@ public class TreasuryRequestService {
 
     //======================== LIST TREASURY REQUESTS =========================== //
     @Transactional(readOnly = true)
-    public List<TreasuryRequestResponse> listRequests(UUID callerUserId, boolean canManage) {
+    public TreasuryRequestListResponse listRequests(UUID callerUserId, boolean canManage, RequestStatus status, Pageable pageable) {
 
         List<TreasuryRequestEntity> requests;
 
         if (canManage) {
-            requests = treasuryRequestRepository
-                    .findAllByOrderByCreatedAtDesc();
+            requests = (status != null)
+                    ? treasuryRequestRepository.findAllByStatusOrderByCreatedAtDesc(status, pageable)
+                    : treasuryRequestRepository.findAllByOrderByCreatedAtDesc(pageable);
         } else {
-
             AgentEntity agent = agentRepository.findByUserId(callerUserId)
-                    .orElseThrow(() ->
-                            new BadRequestException("No agent profile for this account"));
+                    .orElseThrow(() -> new BadRequestException("No agent profile for this account"));
 
-            requests = treasuryRequestRepository
-                    .findAllByAgent_IdOrderByCreatedAtDesc(agent.getId());
+            requests = (status != null)
+                    ? treasuryRequestRepository.findAllByAgent_IdAndStatusOrderByCreatedAtDesc(agent.getId(), status, pageable)
+                    : treasuryRequestRepository.findAllByAgent_IdOrderByCreatedAtDesc(agent.getId(), pageable);
         }
 
-        return requests.stream()
+        List<TreasuryRequestResponse> responses = requests.stream()
                 .map(this::toResponse)
                 .toList();
+
+        return new TreasuryRequestListResponse(
+                summarize(requests),
+                responses
+        );
+    }
+
+    //======== return the summary based on status on list (count , total amount) ======
+    private TreasuryRequestsSummary summarize(List<TreasuryRequestEntity> requests) {
+        RequestStatusSummary pending = summarizeByStatus(requests, RequestStatus.PENDING);
+        RequestStatusSummary approved = summarizeByStatus(requests, RequestStatus.APPROVED);
+        RequestStatusSummary rejected = summarizeByStatus(requests, RequestStatus.REJECTED);
+
+        return new TreasuryRequestsSummary(
+                requests.size(),
+                pending,
+                approved,
+                rejected
+        );
+    }
+
+    private static RequestStatusSummary summarizeByStatus(List<TreasuryRequestEntity> requests, RequestStatus status) {
+        long count = 0;
+        BigDecimal balance = BigDecimal.ZERO;
+        for (TreasuryRequestEntity request : requests) {
+            if (request.getStatus() == status) {
+                count++;
+                balance = balance.add(request.getAmount());
+            }
+        }
+        return new RequestStatusSummary(count, balance.setScale(2, RoundingMode.HALF_UP));
     }
 
     //============================== GET SINGLE TREASURY REQUEST ================= //
@@ -166,10 +202,6 @@ public class TreasuryRequestService {
                 .orElseThrow(() -> new BadRequestException("Treasury request not found"));
     }
 
-    // Locked lookup for approve/reject only. A read-only transaction (getRequest/listRequests)
-    // must never route through this - Postgres rejects SELECT ... FOR UPDATE inside a read-only
-    // transaction, and even where it wouldn't throw, it would needlessly serialize a view
-    // behind any in-flight approve/reject on the same row.
     private TreasuryRequestEntity findForUpdate(UUID requestId) {
         return treasuryRequestRepository.findByRequestId(requestId)
                 .orElseThrow(() -> new BadRequestException("Treasury request not found"));

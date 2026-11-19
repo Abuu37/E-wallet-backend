@@ -2,6 +2,8 @@ package com.application.e_wallet.treasury.controller;
 
 import com.application.e_wallet.common.dto.ApiResponse;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
+import com.application.e_wallet.treasury.dto.CommissionTopupRequest;
+import com.application.e_wallet.treasury.dto.CommissionTopupResponse;
 import com.application.e_wallet.treasury.dto.MintRequest;
 import com.application.e_wallet.treasury.dto.TransactionJournalResponse;
 import com.application.e_wallet.treasury.dto.TreasuryOverviewResponse;
@@ -22,8 +24,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-// Mint is the only float movement this controller exposes. Topup/withdraw only ever happen
-// through an approved treasury_requests row (see TreasuryRequestController) - there is no
 // direct admin bypass endpoint for them.
 @RestController
 @RequestMapping("/api/v1/treasury")
@@ -34,8 +34,9 @@ public class TreasuryController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('COMPANY_WALLET_VIEW')")
-    public ResponseEntity<ApiResponse<TreasuryOverviewResponse>> getOverview() {
-        TreasuryOverviewResponse response = treasuryService.getOverview();
+    public ResponseEntity<ApiResponse<TreasuryOverviewResponse>> getOverview(Authentication authentication) {
+        AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
+        TreasuryOverviewResponse response = treasuryService.getOverview(principal.email());
 
         ApiResponse<TreasuryOverviewResponse> body = ApiResponse.<TreasuryOverviewResponse>builder()
                 .timestamp(Instant.now())
@@ -70,12 +71,31 @@ public class TreasuryController {
         UUID adminUserId = principal.userId();
 
         treasuryService.mint(request, adminUserId);
-        TreasuryOverviewResponse response = treasuryService.getOverview();
+        TreasuryOverviewResponse response = treasuryService.getOverview(principal.email());
 
         ApiResponse<TreasuryOverviewResponse> body = ApiResponse.<TreasuryOverviewResponse>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Float minted successfully")
+                .message("Float minted successfully int Company Master Account")
+                .data(response)
+                .build();
+
+        return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/commission/topup")
+    @PreAuthorize("hasAuthority('COMMISSION_MANAGE')")
+    public ResponseEntity<ApiResponse<CommissionTopupResponse>> topupCommission(@Valid @RequestBody CommissionTopupRequest request, Authentication authentication) {
+        AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
+
+        CommissionTopupResponse response = treasuryService.fundCommission(
+                request.amount(), request.description(), principal.userId()
+        );
+
+        ApiResponse<CommissionTopupResponse> body = ApiResponse.<CommissionTopupResponse>builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.OK.value())
+                .message("Commission pool funded successfully from Company Master Wallet.")
                 .data(response)
                 .build();
 

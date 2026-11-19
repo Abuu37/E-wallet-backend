@@ -32,8 +32,8 @@ import java.util.concurrent.ThreadLocalRandom;
 @RequiredArgsConstructor
 public class WalletService {
 
-    // "01" + 8 digits + 2 letters = 12 characters, same lead digits as AGENT_FLOAT by design.
-    private static final String CUSTOMER_ACCOUNT_PREFIX = "01";
+    // 12-digit account number, "03" lead (same style as AGENT_FLOAT/AGENT_COMMISSION), retried on collision.
+    private static final String CUSTOMER_ACCOUNT_PREFIX = "03";
 
     private final WalletRepository walletRepository;
     private final CustomerRepository customerRepository;
@@ -62,11 +62,11 @@ public class WalletService {
         return walletRepository.save(wallet);
     }
 
-    // 12 characters: "01" + 8 random digits + 2 random letters, retried on collision.
+    // 12-digit account number, "03" lead, retried on collision.
     private String generateCustomerAccountNumber() {
         String number;
         do {
-            number = CUSTOMER_ACCOUNT_PREFIX + randomDigits(8) + randomLetters(2);
+            number = CUSTOMER_ACCOUNT_PREFIX + randomDigits(10);
         } while (walletRepository.existsByAccountNumber(number));
 
         return number;
@@ -76,14 +76,6 @@ public class WalletService {
         StringBuilder sb = new StringBuilder(count);
         for (int i = 0; i < count; i++) {
             sb.append(ThreadLocalRandom.current().nextInt(10));
-        }
-        return sb.toString();
-    }
-
-    private static String randomLetters(int count) {
-        StringBuilder sb = new StringBuilder(count);
-        for (int i = 0; i < count; i++) {
-            sb.append((char) ('A' + ThreadLocalRandom.current().nextInt(26)));
         }
         return sb.toString();
     }

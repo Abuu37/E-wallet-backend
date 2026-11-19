@@ -16,11 +16,6 @@ import java.util.UUID;
                         name = "idx_customers_user_id",
                         columnList = "user_id",
                         unique = true
-                ),
-                @Index(
-                        name = "idx_customers_customer_number",
-                        columnList = "customer_number",
-                        unique = true
                 )
         }
 )
@@ -45,14 +40,6 @@ public class CustomerEntity {
             unique = true
     )
     private UserEntity user;
-
-    @Column(
-            name = "customer_number",
-            nullable = false,
-            unique = true,
-            length = 30
-    )
-    private String customerNumber;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

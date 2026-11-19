@@ -47,7 +47,6 @@ public class OtpService {
 
           otpVerificationRepository.save(verification);
 
-
             log.info("OTP generated for {} (expiresAt={})", user.getEmail(), verification.getExpiresAt());
 
             return otp;
@@ -87,7 +86,7 @@ public class OtpService {
             );
         }
 
-        if (user.getStatus() != UserStatus.PENDING) {
+        if (user.getStatus() != UserStatus.AWAITING_PIN) {
             throw new BadRequestException(
                     "Account is not eligible for verification."
             );
@@ -96,60 +95,51 @@ public class OtpService {
         sendVerificationOtp(user);
     }
 
+
     //==============  verify otp =============== //
     @Transactional(noRollbackFor = BadRequestException.class)
     public void verifyOtp(String email, String otp) {
 
-        UserEntity user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new BadRequestException(
-                                "User not found. kindly register at our platform."
-                        ));
+        log.info("======= Verifying OTP for {} (expiresAt={}) ========", email, otp);
 
-        OtpVerificationEntity verification =
-                otpVerificationRepository.findByUser(user)
-                        .orElseThrow(() ->
-                                new BadRequestException(
-                                        "Invalid or expired verification code."
-                                ));
+        try {
+            UserEntity user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new BadRequestException("User not found. kindly register at our platform."));
 
-        if (verification.isVerified()) {
-            throw new BadRequestException(
-                    "Account has already been verified."
-            );
-        }
+            OtpVerificationEntity verification = otpVerificationRepository.findByUser(user)
+                    .orElseThrow(() -> new BadRequestException("Invalid or expired verification code."));
 
-        if (verification.getExpiresAt().isBefore(Instant.now())) {
-            throw new BadRequestException(
-                    "Verification code has expired."
-            );
-        }
+            if (verification.isVerified()) {
+                throw new BadRequestException("Account has already been verified.");
+            }
 
-        if (verification.getAttempts() >= verification.getMaxAttempts()) {
-            throw new BadRequestException(
-                    "Maximum verification attempts exceeded."
-            );
-        }
+            if (verification.getExpiresAt().isBefore(Instant.now())) {
+                throw new BadRequestException("Verification code has expired.");
+            }
 
-        if (!passwordEncoder.matches(otp, verification.getOtpHash())) {
+            if (verification.getAttempts() >= verification.getMaxAttempts()) {
+                throw new BadRequestException("Maximum verification attempts exceeded.");
+            }
 
-            verification.setAttempts(verification.getAttempts() + 1);
+            if (!passwordEncoder.matches(otp, verification.getOtpHash())) {
+                verification.setAttempts(verification.getAttempts() + 1);
+                otpVerificationRepository.save(verification);
+                throw new BadRequestException("Invalid verification code.");
+            }
+
+            verification.setVerified(true);
+            verification.setVerifiedAt(Instant.now());
 
             otpVerificationRepository.save(verification);
+            user.setStatus(UserStatus.AWAITING_PIN);
+            userRepository.save(user);
 
-            throw new BadRequestException(
-                    "Invalid verification code."
-            );
+            log.info("OTP successfully verified for email: {}", email);
+
+        } catch (BadRequestException e) {
+            log.warn(" Unexpected system error during OTP verification for email: {}", email, e.getMessage());
+
         }
-
-        verification.setVerified(true);
-        verification.setVerifiedAt(Instant.now());
-
-        otpVerificationRepository.save(verification);
-
-        user.setStatus(UserStatus.AWAITING_PIN);
-
-        userRepository.save(user);
     }
 
 }

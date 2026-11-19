@@ -33,16 +33,9 @@ public class UserEntity implements UserDetails {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    // Stable, opaque external identifier - self-generated if not supplied, same
-    // pattern as other self-generating identifiers (agentNumber, etc.) in this codebase.
     @Column(name = "reference", nullable = false, unique = true)
     private UUID reference;
 
-    // Human-chosen login/display handle. NOTE: the field is deliberately NOT named
-    // "username" - Lombok's @Getter would then generate getUsername(), colliding with
-    // the UserDetails-contract override below (which must keep returning id.toString()
-    // for Spring Security's principal lookup). Naming it loginUsername keeps that
-    // collision from happening silently; the value is read via getLoginUsername().
     @Column(name = "username", nullable = false, unique = true, length = 100)
     private String loginUsername;
 
@@ -55,7 +48,6 @@ public class UserEntity implements UserDetails {
     @Column(nullable = false, unique = true)
     private String phone;
 
-    // Null while the account is PENDING/AWAITING_PIN; set once the user completes set-pin.
     @Column(name ="pin_hash")
     private String pinHash;
 
@@ -79,7 +71,7 @@ public class UserEntity implements UserDetails {
         this.createdAt = now;
         this.updatedAt = now;
         if (this.status == null) {
-            this.status = UserStatus.PENDING;
+            this.status = UserStatus.AWAITING_PIN;
         }
         if (this.reference == null) {
             this.reference = UUID.randomUUID();
@@ -95,26 +87,20 @@ public class UserEntity implements UserDetails {
     public@NonNull Collection<? extends GrantedAuthority> getAuthorities() {
         Set<GrantedAuthority> authorities = new HashSet<>();
         if (this.role != null) {
-            // 1. Add the Role itself (e.g., ROLE_CUSTOMER)
             log.info("Role: {}", role);
             log.info("Permissions: {}", role.getPermissions());
             authorities.add(new SimpleGrantedAuthority(role.getName()));
-            // 2. Add all associated Permissions (e.g., VENUE_READ, RIDE_REQUEST)
             role.getPermissions().forEach(permission -> authorities
                     .add(new SimpleGrantedAuthority(permission.getName())));
         }
         return authorities;
     }
 
-    // Name fixed by the UserDetails contract; backed by the PIN hash.
     @Override
     public @Nullable String getPassword() {
         return pinHash;
     }
 
-    // Name fixed by the UserDetails contract: this intentionally stays id.toString()
-    // (not the human-chosen loginUsername) because Spring Security's principal lookup
-    // keys on it. See the loginUsername field comment above for why the two don't collide.
     @Override
     public @NonNull String getUsername() {
         return id.toString();

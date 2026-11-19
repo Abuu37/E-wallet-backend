@@ -26,30 +26,6 @@ public class AuthController {
     private final PinResetService pinResetService;
     private final RateLimitingService rateLimitingService;
 
-
-    @PostMapping("/customer-registration")
-    public ResponseEntity<ApiResponse<RegistrationResponse>> registerCustomer(@Valid @RequestBody CustomerRegistrationRequest request, HttpServletRequest httpRequest){
-
-        String ip = httpRequest.getRemoteAddr();
-
-        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.getEmail())) {
-            throw new TooManyRequestsException("Too many registration attempts. Please try again later.");
-        }
-
-        RegistrationResponse response = authService.registerCustomer(request);
-
-        ApiResponse<RegistrationResponse> body = ApiResponse.<RegistrationResponse>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.CREATED.value())
-                .message("OTP has been sent to your email.")
-                .data(response)
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(body);
-    }
-
     @PostMapping("/set-pin")
     public ResponseEntity<ApiResponse<UserProfileResponse>> setPin(@Valid @RequestBody SetPinRequest request, HttpServletRequest httpRequest){
 

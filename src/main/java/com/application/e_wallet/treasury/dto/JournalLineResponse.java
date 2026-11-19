@@ -5,6 +5,9 @@ import java.util.UUID;
 
 public record JournalLineResponse(
         UUID walletId,
+        String accountNumber,
+        String accountOwner,
+        String walletType,
         String entryType,
         BigDecimal amount
 ) {

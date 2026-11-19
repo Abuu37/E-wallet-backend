@@ -6,5 +6,6 @@ public enum WalletType {
     AGENT_FLOAT,
     AGENT_COMMISSION,
     CUSTOMER_MAIN,
-    ESCROW_BANK
+    ESCROW_BANK,
+    COMMISSION
 }

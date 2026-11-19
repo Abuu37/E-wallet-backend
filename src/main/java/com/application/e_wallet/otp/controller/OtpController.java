@@ -6,6 +6,8 @@ import com.application.e_wallet.otp.dto.VerifyOtpRequest;
 import com.application.e_wallet.otp.service.OtpService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,14 +22,18 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class OtpController {
 
+    private static final Logger logger = LoggerFactory.getLogger(OtpController.class);
+
     private final OtpService otpService;
 
     @PostMapping("/verify")
     public ResponseEntity<ApiResponse<Void>> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
-        otpService.verifyOtp(
-                request.email(),
-                request.otp()
-        );
+
+        logger.info("Received OTP verification request for email: {}", request.email());
+
+        otpService.verifyOtp(request.email(), request.otp());
+
+        logger.info("OTP verified successfully for email: {}", request.email());
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .timestamp(Instant.now())
@@ -40,6 +46,8 @@ public class OtpController {
 
     @PostMapping("/resend")
     public ResponseEntity<ApiResponse<Void>> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        logger.info("Received OTP resend request for email: {}", request.email());
+
         otpService.resendOtp(request.email());
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()

@@ -1,6 +1,7 @@
 package com.application.e_wallet.treasury.dto;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record TreasuryOverviewResponse(
@@ -8,6 +9,8 @@ public record TreasuryOverviewResponse(
         String currency,
         BigDecimal unallocatedFloat,
         BigDecimal totalDistributedFloat,
-        TreasuryMetrics metrics
+        TreasuryMetrics metrics,
+        String createdBy,
+        OffsetDateTime createdAt
 ) {
 }

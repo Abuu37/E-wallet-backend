@@ -4,8 +4,10 @@ import com.application.e_wallet.agent.dto.AgentCreationRequest;
 import com.application.e_wallet.agent.dto.AgentDetailResponse;
 import com.application.e_wallet.agent.dto.AgentListResponse;
 import com.application.e_wallet.agent.dto.AgentOnboardResponse;
+import com.application.e_wallet.agent.dto.AgentStatusUpdateRequest;
 import com.application.e_wallet.agent.dto.AgentUpdateRequest;
 import com.application.e_wallet.agent.dto.AgentUpdateResponse;
+import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.service.AgentService;
 import com.application.e_wallet.common.dto.ApiResponse;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
@@ -19,6 +21,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -57,14 +60,31 @@ public class AgentController {
                 .body(body);
     }
 
+    @GetMapping("/profile")
+    @PreAuthorize("hasAuthority('AGENT_VIEW')")
+    public ResponseEntity<ApiResponse<AgentDetailResponse>> getOwnProfile(Authentication authentication) {
+        AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
+        AgentDetailResponse response = agentService.getOwnProfile(principal.userId());
+
+        ApiResponse<AgentDetailResponse> body = ApiResponse.<AgentDetailResponse>builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.OK.value())
+                .message("Agent profile retrieved successfully.")
+                .data(response)
+                .build();
+
+        return ResponseEntity.ok(body);
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('USER_VIEW')")
     public ResponseEntity<ApiResponse<AgentListResponse>> listAgents(
+            @RequestParam(required = false) AgentStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
         Pageable pageable = PageRequest.of(page, size);
-        AgentListResponse response = agentService.listAgents(pageable);
+        AgentListResponse response = agentService.listAgents(pageable, status);
 
         ApiResponse<AgentListResponse> body = ApiResponse.<AgentListResponse>builder()
                 .timestamp(Instant.now())
@@ -103,6 +123,24 @@ public class AgentController {
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
                 .message("Agent updated successfully.")
+                .data(response)
+                .build();
+
+        return ResponseEntity.ok(body);
+    }
+
+    @PatchMapping("/{agentId}/status")
+    @PreAuthorize("hasAuthority('USER_UPDATE')")
+    public ResponseEntity<ApiResponse<AgentUpdateResponse>> updateAgentStatus(
+            @PathVariable UUID agentId,
+            @Valid @RequestBody AgentStatusUpdateRequest request
+    ) {
+        AgentUpdateResponse response = agentService.updateAgentStatus(agentId, request);
+
+        ApiResponse<AgentUpdateResponse> body = ApiResponse.<AgentUpdateResponse>builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.OK.value())
+                .message("Agent status updated successfully.")
                 .data(response)
                 .build();
 

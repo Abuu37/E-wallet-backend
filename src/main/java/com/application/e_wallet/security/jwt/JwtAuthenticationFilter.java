@@ -61,11 +61,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 permissionsClaim.stream()
                         ).<GrantedAuthority>map(SimpleGrantedAuthority::new).toList();
 
-                        // 3. If validation passes, the FILTER logs the user into Spring Security
+                        // ============= 3. If validation passes, the FILTER logs the user into Spring Security ===============
                         AuthenticatedUser principal = new AuthenticatedUser(userId, email, status);
 
-                        UsernamePasswordAuthenticationToken authToken =
-                                new UsernamePasswordAuthenticationToken(principal, null, authorities);
+                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(principal, null, authorities);
 
                         SecurityContextHolder.getContext().setAuthentication(authToken);
                     } else {

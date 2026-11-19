@@ -10,6 +10,7 @@ import com.application.e_wallet.staff.entity.StaffStatus;
 import com.application.e_wallet.staff.repository.StaffRepository;
 import com.application.e_wallet.treasury.dto.TreasuryRequestCreateRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestDecisionRequest;
+import com.application.e_wallet.treasury.dto.TreasuryRequestListResponse;
 import com.application.e_wallet.treasury.dto.TreasuryRequestResponse;
 import com.application.e_wallet.treasury.entity.RequestStatus;
 import com.application.e_wallet.treasury.entity.RequestType;
@@ -23,12 +24,15 @@ import com.application.e_wallet.wallet.repository.WalletRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -195,5 +199,91 @@ class TreasuryRequestServiceTest {
 
         verify(treasuryRequestRepository).findById(requestId);
         verify(treasuryRequestRepository, never()).findByRequestId(requestId);
+    }
+
+    @Test
+    void listRequestsSummarizesCountsAndBalancesPerStatusAcrossTheReturnedList() {
+        TreasuryRequestEntity pending2 = requestWithStatus("REQ-P2", new BigDecimal("30.00"), RequestStatus.PENDING);
+        TreasuryRequestEntity approved = requestWithStatus("REQ-A1", new BigDecimal("100.00"), RequestStatus.APPROVED);
+        TreasuryRequestEntity rejected = requestWithStatus("REQ-R1", new BigDecimal("10.00"), RequestStatus.REJECTED);
+
+        when(treasuryRequestRepository.findAllByOrderByCreatedAtDesc(any(Pageable.class)))
+                .thenReturn(List.of(request, pending2, approved, rejected));
+
+        TreasuryRequestListResponse result = treasuryRequestService.listRequests(adminUserId, true, null, PageRequest.of(0, 20));
+
+        assertThat(result.requests()).hasSize(4);
+        assertThat(result.summary().totalRequests()).isEqualTo(4);
+        assertThat(result.summary().pending().count()).isEqualTo(2);
+        assertThat(result.summary().pending().balance()).isEqualByComparingTo("80.00");
+        assertThat(result.summary().approved().count()).isEqualTo(1);
+        assertThat(result.summary().approved().balance()).isEqualByComparingTo("100.00");
+        assertThat(result.summary().rejected().count()).isEqualTo(1);
+        assertThat(result.summary().rejected().balance()).isEqualByComparingTo("10.00");
+    }
+
+    @Test
+    void listRequestsForNonManagerScopesBothListAndSummaryToTheCallersOwnAgent() {
+        when(agentRepository.findByUserId(agentUserId)).thenReturn(Optional.of(request.getAgent()));
+        when(treasuryRequestRepository.findAllByAgent_IdOrderByCreatedAtDesc(eq(agentId), any(Pageable.class)))
+                .thenReturn(List.of(request));
+
+        TreasuryRequestListResponse result = treasuryRequestService.listRequests(agentUserId, false, null, PageRequest.of(0, 20));
+
+        assertThat(result.summary().totalRequests()).isEqualTo(1);
+        assertThat(result.summary().pending().count()).isEqualTo(1);
+        assertThat(result.summary().pending().balance()).isEqualByComparingTo("50.00");
+        verify(treasuryRequestRepository, never()).findAllByOrderByCreatedAtDesc(any());
+    }
+
+    @Test
+    void listRequestsForManagerWithStatusFilterUsesTheUncappedQueryNotTheDashboardsTopTen() {
+        TreasuryRequestEntity approved2 = requestWithStatus("REQ-A2", new BigDecimal("40.00"), RequestStatus.APPROVED);
+        when(treasuryRequestRepository.findAllByStatusOrderByCreatedAtDesc(eq(RequestStatus.APPROVED), any(Pageable.class)))
+                .thenReturn(List.of(approved2));
+
+        TreasuryRequestListResponse result = treasuryRequestService.listRequests(adminUserId, true, RequestStatus.APPROVED, PageRequest.of(0, 20));
+
+        assertThat(result.requests()).hasSize(1);
+        assertThat(result.summary().approved().count()).isEqualTo(1);
+        verify(treasuryRequestRepository, never()).findTop10ByStatusOrderByCreatedAtDesc(any());
+        verify(treasuryRequestRepository, never()).findAllByOrderByCreatedAtDesc(any());
+    }
+
+    @Test
+    void listRequestsForNonManagerWithStatusFilterUsesTheAgentAndStatusScopedQuery() {
+        when(agentRepository.findByUserId(agentUserId)).thenReturn(Optional.of(request.getAgent()));
+        when(treasuryRequestRepository.findAllByAgent_IdAndStatusOrderByCreatedAtDesc(
+                eq(agentId), eq(RequestStatus.PENDING), any(Pageable.class)))
+                .thenReturn(List.of(request));
+
+        TreasuryRequestListResponse result = treasuryRequestService.listRequests(agentUserId, false, RequestStatus.PENDING, PageRequest.of(0, 20));
+
+        assertThat(result.requests()).hasSize(1);
+        verify(treasuryRequestRepository, never()).findAllByAgent_IdOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    void listRequestsThreadsThePageableThroughToTheRepository() {
+        Pageable secondPageOfFive = PageRequest.of(1, 5);
+        when(treasuryRequestRepository.findAllByOrderByCreatedAtDesc(secondPageOfFive)).thenReturn(List.of(request));
+
+        treasuryRequestService.listRequests(adminUserId, true, null, secondPageOfFive);
+
+        verify(treasuryRequestRepository).findAllByOrderByCreatedAtDesc(secondPageOfFive);
+    }
+
+    private TreasuryRequestEntity requestWithStatus(String requestRef, BigDecimal requestAmount, RequestStatus status) {
+        return TreasuryRequestEntity.builder()
+                .id(UUID.randomUUID())
+                .requestRef(requestRef)
+                .agent(request.getAgent())
+                .amount(requestAmount)
+                .reason("need float")
+                .status(status)
+                .requestType(RequestType.TOPUP)
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
     }
 }

@@ -4,7 +4,7 @@ import com.application.e_wallet.ledger.dto.JournalLineRequest;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.entity.TransactionJournalEntity;
 import com.application.e_wallet.ledger.entity.TransactionJournalLineEntity;
-import com.application.e_wallet.ledger.entity.TransactionType;
+import com.application.e_wallet.ledger.entity.LedgerTransactionType;
 import com.application.e_wallet.ledger.repository.TransactionJournalRepository;
 import com.application.e_wallet.user.entity.UserEntity;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ public class LedgerService {
 
     //======================= Real Gl that rejecting unbalanced debit/credit totals =================== //
     @Transactional
-    public TransactionJournalEntity postJournal(TransactionType transactionType, String description, UserEntity createdBy, List<JournalLineRequest> lines) {
+    public TransactionJournalEntity postJournal(LedgerTransactionType transactionType, String description, UserEntity createdBy, List<JournalLineRequest> lines) {
 
         BigDecimal totalDebits = BigDecimal.ZERO;
         BigDecimal totalCredits = BigDecimal.ZERO;
@@ -35,6 +35,7 @@ public class LedgerService {
         for (JournalLineRequest line : lines) {
             if (line.entryType() == EntryType.DEBIT) {
                 totalDebits = totalDebits.add(line.amount());
+
             } else {
                 totalCredits = totalCredits.add(line.amount());
             }
@@ -45,6 +46,7 @@ public class LedgerService {
                     "Unbalanced journal: total debits (" + totalDebits + ") must equal total credits (" + totalCredits + ")");
         }
 
+        // build the transaction journal Entity
         TransactionJournalEntity journal = TransactionJournalEntity.builder()
                 .referenceNumber(generateReferenceNumber(transactionType))
                 .transactionType(transactionType)
@@ -66,7 +68,7 @@ public class LedgerService {
         return transactionJournalRepository.save(journal);
     }
 
-    private String generateReferenceNumber(TransactionType transactionType) {
+    private String generateReferenceNumber(LedgerTransactionType transactionType) {
 
         String referenceNumber;
         do {
@@ -77,7 +79,9 @@ public class LedgerService {
                     .substring(0, 8)
                     .toUpperCase();
             referenceNumber = transactionType + "-" + datePart + "-" + randomPart;
-        } while (transactionJournalRepository.existsByReferenceNumber(referenceNumber));
+        } while (
+                transactionJournalRepository.existsByReferenceNumber(referenceNumber)
+        );
 
         return referenceNumber;
     }

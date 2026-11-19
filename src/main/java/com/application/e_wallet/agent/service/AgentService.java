@@ -5,6 +5,7 @@ import com.application.e_wallet.agent.dto.AgentCreationRequest;
 import com.application.e_wallet.agent.dto.AgentDetailResponse;
 import com.application.e_wallet.agent.dto.AgentListResponse;
 import com.application.e_wallet.agent.dto.AgentOnboardResponse;
+import com.application.e_wallet.agent.dto.AgentStatusUpdateRequest;
 import com.application.e_wallet.agent.dto.AgentSummaryResponse;
 import com.application.e_wallet.agent.dto.AgentTransactionSummary;
 import com.application.e_wallet.agent.dto.AgentUpdateRequest;
@@ -173,8 +174,10 @@ public class    AgentService {
 
     //======================= List AN AGENT ====================//
     @Transactional(readOnly = true)
-    public AgentListResponse listAgents(Pageable pageable) {
-        Page<AgentEntity> page = agentRepository.findAll(pageable);
+    public AgentListResponse listAgents(Pageable pageable, AgentStatus status) {
+        Page<AgentEntity> page = status != null
+                ? agentRepository.findByAgentStatus(status, pageable)
+                : agentRepository.findAll(pageable);
         List<AgentSummaryResponse> agents = page.getContent().stream()
                 .map(this::toSummaryResponse)
                 .toList();
@@ -190,6 +193,14 @@ public class    AgentService {
     @Transactional(readOnly = true)
     public AgentDetailResponse listAgent(UUID agentId) {
         AgentEntity agent = findAgentOrThrow(agentId);
+        return toDetailResponse(agent);
+    }
+
+    // =========== Agent views their OWN detail (self-service, no agentId param) ========== //
+    @Transactional(readOnly = true)
+    public AgentDetailResponse getOwnProfile(UUID callerUserId) {
+        AgentEntity agent = agentRepository.findByUserId(callerUserId)
+                .orElseThrow(() -> new BadRequestException("No agent profile for this account"));
         return toDetailResponse(agent);
     }
 
@@ -221,33 +232,65 @@ public class    AgentService {
     }
 
     // ==================== Deactivate AGENT ===================== //
+    // Kept as a convenience alias for updateAgentStatus(agentId, DEACTIVATED) - existing
+    // callers of DELETE /api/v1/agents/{agentId} don't need to switch to the status endpoint.
     @Transactional
     public void deactivateAgent(UUID agentId) {
-
         AgentEntity agent = findAgentOrThrow(agentId);
-        UserEntity user = agent.getUser();
+        applyStatus(agent, AgentStatus.DEACTIVATED);
+        agentRepository.save(agent);
+    }
 
-        if (user.getStatus() == UserStatus.DISABLED && agent.getAgentStatus() == AgentStatus.DEACTIVATED) {
+    // ==================== Change AGENT status (ACTIVE / SUSPENDED / DEACTIVATED) ========= //
+    @Transactional
+    public AgentUpdateResponse updateAgentStatus(UUID agentId, AgentStatusUpdateRequest request) {
+        AgentEntity agent = findAgentOrThrow(agentId);
+        applyStatus(agent, request.status());
+        return toUpdateResponse(agentRepository.save(agent));
+    }
+
+    // Keeps the agent's status, the linked user's login status, and both wallets' status in
+    // lockstep, and forces a logout whenever the agent is no longer ACTIVE. Idempotent - a
+    // no-op when the agent is already in the requested status.
+    private void applyStatus(AgentEntity agent, AgentStatus newStatus) {
+        if (agent.getAgentStatus() == newStatus) {
             return;
         }
 
-        user.setStatus(UserStatus.DISABLED);
+        UserEntity user = agent.getUser();
+        agent.setAgentStatus(newStatus);
+        user.setStatus(toUserStatus(newStatus));
         userRepository.save(user);
-
-        agent.setAgentStatus(AgentStatus.DEACTIVATED);
-        agentRepository.save(agent);
 
         WalletEntity floatWallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() -> new IllegalStateException("Agent float wallet not found"));
-        floatWallet.setStatus(WalletStatus.CLOSED);
+        floatWallet.setStatus(toWalletStatus(newStatus));
         walletRepository.save(floatWallet);
 
         WalletEntity commissionWallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_COMMISSION)
                 .orElseThrow(() -> new IllegalStateException("Agent commission wallet not found"));
-        commissionWallet.setStatus(WalletStatus.CLOSED);
+        commissionWallet.setStatus(toWalletStatus(newStatus));
         walletRepository.save(commissionWallet);
 
-        userSessionRepository.deleteAllByUserId(user.getId());
+        if (newStatus != AgentStatus.ACTIVE) {
+            userSessionRepository.deleteAllByUserId(user.getId());
+        }
+    }
+
+    private static UserStatus toUserStatus(AgentStatus status) {
+        return switch (status) {
+            case ACTIVE -> UserStatus.ACTIVE;
+            case SUSPENDED -> UserStatus.SUSPENDED;
+            case DEACTIVATED -> UserStatus.DISABLED;
+        };
+    }
+
+    private static WalletStatus toWalletStatus(AgentStatus status) {
+        return switch (status) {
+            case ACTIVE -> WalletStatus.ACTIVE;
+            case SUSPENDED -> WalletStatus.SUSPENDED;
+            case DEACTIVATED -> WalletStatus.CLOSED;
+        };
     }
 
     private AgentEntity findAgentOrThrow(UUID agentId) {

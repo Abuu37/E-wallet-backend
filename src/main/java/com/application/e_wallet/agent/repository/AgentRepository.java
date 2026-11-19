@@ -3,6 +3,8 @@ package com.application.e_wallet.agent.repository;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.wallet.entity.WalletType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,9 +18,13 @@ public interface AgentRepository extends JpaRepository<AgentEntity, UUID> {
 
     boolean existsByAgentNumber(String agentNumber);
 
-    Optional<AgentEntity> findByUserId(UUID userid);
+    Optional<AgentEntity> findByAgentNumber(String agentNumber);
+
+    Optional<AgentEntity> findByUserId(UUID userId);
 
     long countByAgentStatus(AgentStatus agentStatus);
+
+    Page<AgentEntity> findByAgentStatus(AgentStatus agentStatus, Pageable pageable);
 
     @Query("""
             SELECT a.id AS agentId, a.agentNumber AS agentCode, a.businessName AS businessName,
