@@ -31,10 +31,7 @@ public class TreasuryRequestController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('REQUEST_FLOAT')")
-    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> createRequest(
-            @Valid @RequestBody TreasuryRequestCreateRequest request,
-            Authentication authentication
-    ) {
+    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> createRequest(@Valid @RequestBody TreasuryRequestCreateRequest request, Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         TreasuryRequestResponse response = treasuryRequestService.createRequest(principal.userId(), request);
 

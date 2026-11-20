@@ -43,4 +43,6 @@ public interface TreasuryRequestRepository extends JpaRepository<TreasuryRequest
             WHERE r.id = :requestId
 """)
     Optional<TreasuryRequestEntity> findByRequestId(@Param("requestId") UUID requestId);
+
+    boolean existsByExternalReference(String externalReference);
 }

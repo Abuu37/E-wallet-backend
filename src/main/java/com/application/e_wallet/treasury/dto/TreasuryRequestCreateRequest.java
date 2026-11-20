@@ -1,6 +1,7 @@
 package com.application.e_wallet.treasury.dto;
 
 import com.application.e_wallet.treasury.entity.RequestType;
+import jakarta.persistence.Column;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -21,6 +22,7 @@ public record TreasuryRequestCreateRequest(
         @NotBlank
         String reason,
 
+        @NotBlank
         String externalReference
 
 ) {

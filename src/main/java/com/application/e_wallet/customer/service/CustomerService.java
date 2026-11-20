@@ -2,13 +2,17 @@ package com.application.e_wallet.customer.service;
 
 import com.application.e_wallet.auth.dto.CustomerRegistrationRequest;
 import com.application.e_wallet.auth.dto.RegistrationResponse;
+import com.application.e_wallet.auth.repository.UserSessionRepository;
 import com.application.e_wallet.common.event.UserRegisteredEvent;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.customer.dto.CustomerListResponse;
+import com.application.e_wallet.customer.dto.CustomerListSummary;
 import com.application.e_wallet.customer.dto.CustomerProfileResponse;
+import com.application.e_wallet.customer.dto.CustomerStatusUpdateRequest;
 import com.application.e_wallet.customer.dto.CustomerSummaryResponse;
+import com.application.e_wallet.customer.dto.CustomerTransactionItem;
 import com.application.e_wallet.customer.dto.CustomerTransactionSummary;
 import com.application.e_wallet.customer.dto.CustomerWalletSummary;
 import com.application.e_wallet.customer.entity.CustomerEntity;
@@ -22,6 +26,7 @@ import com.application.e_wallet.user.entity.UserEntity;
 import com.application.e_wallet.user.entity.UserStatus;
 import com.application.e_wallet.user.repository.UserRepository;
 import com.application.e_wallet.wallet.entity.WalletEntity;
+import com.application.e_wallet.wallet.entity.WalletStatus;
 import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import jakarta.transaction.Transactional;
@@ -44,6 +49,7 @@ public class CustomerService {
     private final RoleRepository roleRepository;
     private final WalletRepository walletRepository;
     private final TransactionRepository transactionRepository;
+    private final UserSessionRepository userSessionRepository;
     private final PhoneNumberNormalizer phoneNumberNormalizer;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -107,8 +113,7 @@ public class CustomerService {
     // in AuthService.setPin(), once the customer has verified their email and set a PIN.
     @Transactional
     public CustomerEntity activateCustomer(UUID userId){
-        CustomerEntity customer = customerRepository
-                .findByUserId(userId)
+        CustomerEntity customer = customerRepository.findByUserId(userId)
                 .orElseThrow(() -> new RuntimeException("Customer not found"));
 
         customer.setStatus(CustomerStatus.ACTIVE);
@@ -118,8 +123,7 @@ public class CustomerService {
     // =========== Customer views their OWN profile (self-service) ========== //
     @Transactional
     public CustomerProfileResponse getOwnProfile(UUID callerUserId) {
-        CustomerEntity customer = customerRepository.findByUserId(callerUserId)
-                .orElseThrow(() -> new BadRequestException("No customer profile for this account"));
+        CustomerEntity customer = findOwnCustomerOrThrow(callerUserId);
         return toProfileResponse(customer);
     }
 
@@ -128,6 +132,55 @@ public class CustomerService {
     public CustomerProfileResponse getCustomer(UUID customerId) {
         CustomerEntity customer = findCustomerOrThrow(customerId);
         return toProfileResponse(customer);
+    }
+
+    // ==================== Change customer status (ACTIVE / SUSPENDED) ========= //
+    @Transactional
+    public CustomerProfileResponse updateCustomerStatus(UUID customerId, CustomerStatusUpdateRequest request) {
+        if (request.status() != CustomerStatus.ACTIVE && request.status() != CustomerStatus.SUSPENDED) {
+            throw new BadRequestException("Status must be ACTIVE or SUSPENDED");
+        }
+
+        CustomerEntity customer = findCustomerOrThrow(customerId);
+        applyStatus(customer, request.status());
+        return toProfileResponse(customerRepository.save(customer));
+    }
+
+    // private methode of the change from PENDING restricted the target status to ACTIVE/SUSPENDED,
+    private void applyStatus(CustomerEntity customer, CustomerStatus newStatus) {
+        if (customer.getStatus() == newStatus) {
+            return;
+        }
+        UserEntity user = customer.getUser();
+        customer.setStatus(newStatus);
+        user.setStatus(toUserStatus(newStatus));
+        userRepository.save(user);
+
+        walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.CUSTOMER_MAIN)
+                .ifPresent(wallet -> {
+                    wallet.setStatus(toWalletStatus(newStatus));
+                    walletRepository.save(wallet);
+                });
+
+        if (newStatus != CustomerStatus.ACTIVE) {
+            userSessionRepository.deleteAllByUserId(user.getId());
+        }
+    }
+
+    private static UserStatus toUserStatus(CustomerStatus status) {
+        return switch (status) {
+            case ACTIVE -> UserStatus.ACTIVE;
+            case SUSPENDED -> UserStatus.SUSPENDED;
+            case PENDING -> throw new IllegalStateException("PENDING is not a settable target status");
+        };
+    }
+
+    private static WalletStatus toWalletStatus(CustomerStatus status) {
+        return switch (status) {
+            case ACTIVE -> WalletStatus.ACTIVE;
+            case SUSPENDED -> WalletStatus.SUSPENDED;
+            case PENDING -> throw new IllegalStateException("PENDING is not a settable target status");
+        };
     }
 
     // =================== List ALL customers (admin) ================== //
@@ -142,10 +195,19 @@ public class CustomerService {
                 .toList();
 
         return new CustomerListResponse(
+                SummaryList(),
                 customers,
                 page.getNumber(),
                 page.getSize(),
                 page.getTotalElements());
+    }
+
+    private CustomerListSummary SummaryList() {
+        return new CustomerListSummary(
+                customerRepository.count(),
+                customerRepository.countByStatus(CustomerStatus.ACTIVE),
+                customerRepository.countByStatus(CustomerStatus.SUSPENDED),
+                walletRepository.sumBalanceByWalletType(WalletType.CUSTOMER_MAIN));
     }
 
     private CustomerEntity findCustomerOrThrow(UUID customerId) {
@@ -153,10 +215,17 @@ public class CustomerService {
                 .orElseThrow(() -> new BadRequestException("Customer not found"));
     }
 
+    private CustomerEntity findOwnCustomerOrThrow(UUID callerUserId) {
+        return customerRepository.findByUserId(callerUserId)
+                .orElseThrow(() -> new BadRequestException("No customer profile for this account"));
+    }
+
     private CustomerProfileResponse toProfileResponse(CustomerEntity customer) {
         UserEntity user = customer.getUser();
         WalletEntity wallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.CUSTOMER_MAIN)
                 .orElseThrow(() -> new IllegalStateException("Customer wallet not initialized"));
+
+        List<TransactionEntity> recent = transactionRepository.findRecentByWalletIdIn(List.of(wallet.getId()), PageRequest.of(0, 5));
 
         return new CustomerProfileResponse(
                 customer.getId(),
@@ -166,8 +235,10 @@ public class CustomerService {
                 customer.getPhoneNumber(),
                 customer.getNidaNumber(),
                 customer.getDateOfBirth(),
+                customer.getStatus().name(),
+                toTransactionSummary(wallet),
                 toWalletSummary(wallet),
-                toTransactionSummary(wallet.getId()),
+                toTransactionItems(wallet.getId(), recent),
                 customer.getCreatedAt());
     }
 
@@ -194,18 +265,25 @@ public class CustomerService {
                 wallet.getStatus().name());
     }
 
-    // No transactions yet for a brand-new wallet isn't an error - it just means
-    // lastTransactionReference/lastTransactionAt stay null.
-    private CustomerTransactionSummary toTransactionSummary(UUID walletId) {
-        long total = transactionRepository.countByWalletId(walletId);
-        List<TransactionEntity> recent = transactionRepository.findRecentByWalletIdIn(List.of(walletId), PageRequest.of(0, 1));
+    private CustomerTransactionSummary toTransactionSummary(WalletEntity wallet) {
+        return new CustomerTransactionSummary(
+                wallet.getBalance(),
+                transactionRepository.countByWalletId(wallet.getId()),
+                transactionRepository.sumAmountInByWalletId(wallet.getId()),
+                transactionRepository.sumAmountOutByWalletId(wallet.getId()));
+    }
 
-        if (recent.isEmpty()) {
-            return new CustomerTransactionSummary(total, null, null);
-        }
-
-        TransactionEntity last = recent.get(0);
-        return new CustomerTransactionSummary(total, last.getReferenceNo(), last.getCreatedAt());
+    private List<CustomerTransactionItem> toTransactionItems(UUID walletId, List<TransactionEntity> recent) {
+        return recent.stream()
+                .map(transaction -> new CustomerTransactionItem(
+                        transaction.getReferenceNo(),
+                        transaction.getTransactionType(),
+                        transaction.getSenderWallet().getId().equals(walletId) ? "DEBIT" : "CREDIT",
+                        transaction.getAmount(),
+                        transaction.getFee(),
+                        transaction.getStatus(),
+                        transaction.getCreatedAt()))
+                .toList();
     }
 
     private String fullName(CustomerEntity customer) {

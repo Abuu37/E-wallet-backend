@@ -59,6 +59,10 @@ public class TreasuryRequestService {
             throw new BadRequestException("Request reason is required");
         }
 
+        if (treasuryRequestRepository.existsByExternalReference(request.externalReference())) {
+            throw new BadRequestException("external reference already exists" + request.externalReference());
+        }
+
         TreasuryRequestEntity treasuryRequest = TreasuryRequestEntity.builder()
                 .agent(agent)
                 .amount(request.amount())
@@ -146,7 +150,6 @@ public class TreasuryRequestService {
     public TreasuryRequestResponse approveRequest(UUID requestId, UUID adminUserId) {
 
         TreasuryRequestEntity treasuryRequest = findForUpdate(requestId);
-
         if (treasuryRequest.getStatus() != RequestStatus.PENDING) {
             throw new BadRequestException("Only a pending treasury request can be approved");
         }

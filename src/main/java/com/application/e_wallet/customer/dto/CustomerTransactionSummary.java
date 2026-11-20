@@ -1,10 +1,11 @@
 package com.application.e_wallet.customer.dto;
 
-import java.time.OffsetDateTime;
+import java.math.BigDecimal;
 
 public record CustomerTransactionSummary(
+        BigDecimal availableBalance,
         long totalTransactions,
-        String lastTransactionReference,
-        OffsetDateTime lastTransactionAt
+        BigDecimal totalMoneyIn,
+        BigDecimal totalMoneyOut
 ) {
 }

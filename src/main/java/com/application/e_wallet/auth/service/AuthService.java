@@ -79,7 +79,9 @@ public class AuthService {
         OtpVerificationEntity verification = otpVerificationRepository.findByUser(user)
                 .orElseThrow(() -> {
                     log.warn("set-pin rejected: no OTP verification record for email={}", email);
-                    return new BadRequestException(genericErrorMessage);
+                    return new BadRequestException(
+                            genericErrorMessage
+                    );
                 });
 
         boolean windowExpired = verification.getVerifiedAt() == null

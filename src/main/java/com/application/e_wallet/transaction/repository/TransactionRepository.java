@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -43,4 +44,20 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
             WHERE t.senderWallet.id = :walletId OR t.receiverWallet.id = :walletId
             """)
     long countByWalletId(@Param("walletId") UUID walletId);
+
+    // Money received: the full amount, no fee deducted on the receiving side today.
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
+            WHERE t.receiverWallet.id = :walletId
+            """)
+    BigDecimal sumAmountInByWalletId(@Param("walletId") UUID walletId);
+
+    // Money paid out: amount + fee, since the fee is debited from the same wallet
+    // alongside the principal amount (see TransactionService.cashOut).
+    @Query("""
+            SELECT COALESCE(SUM(t.amount + t.fee), 0) FROM TransactionEntity t
+            WHERE t.senderWallet.id = :walletId
+            """)
+    BigDecimal sumAmountOutByWalletId(@Param("walletId") UUID walletId);
+
 }

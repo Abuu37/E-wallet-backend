@@ -4,9 +4,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-// Sourced from the ledger (transaction_journal/transaction_journal_line). externalReference
-// is a treasury-request-specific field, not something journal entries carry, and
-// balanceBefore/balanceAfter aren't tracked per entry - only the wallet's current balance is.
+// Sourced from the ledger (transaction_journal/transaction_journal_line).
 public record WalletLedgerEntry(
         UUID entryId,
         String internalReference,

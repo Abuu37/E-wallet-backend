@@ -7,6 +7,7 @@ import com.application.e_wallet.common.dto.ApiResponse;
 import com.application.e_wallet.common.exception.TooManyRequestsException;
 import com.application.e_wallet.customer.dto.CustomerListResponse;
 import com.application.e_wallet.customer.dto.CustomerProfileResponse;
+import com.application.e_wallet.customer.dto.CustomerStatusUpdateRequest;
 import com.application.e_wallet.customer.entity.CustomerStatus;
 import com.application.e_wallet.customer.service.CustomerService;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
@@ -20,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -61,10 +63,7 @@ public class CustomerController {
                 .body(body);
     }
 
-    // Self-service: a customer viewing their OWN profile. CUSTOMER_VIEW is held by the
-    // CUSTOMER role itself - admin's wider view below is deliberately guarded by a
-    // different permission (USER_VIEW), so a customer can't reuse this authority to
-    // browse other customers via the endpoints below.
+    // for the customer to view it is profile
     @GetMapping("/profile")
     @PreAuthorize("hasAuthority('CUSTOMER_VIEW')")
     public ResponseEntity<ApiResponse<CustomerProfileResponse>> getOwnProfile(Authentication authentication) {
@@ -77,10 +76,11 @@ public class CustomerController {
                 .message("Customer profile retrieved successfully.")
                 .data(response)
                 .build();
-
+//e-wallet-local-db
         return ResponseEntity.ok(body);
     }
 
+    //list all customers
     @GetMapping
     @PreAuthorize("hasAuthority('USER_VIEW')")
     public ResponseEntity<ApiResponse<CustomerListResponse>> listCustomers(
@@ -101,6 +101,7 @@ public class CustomerController {
         return ResponseEntity.ok(body);
     }
 
+    //for the admin to view customer by id
     @GetMapping("/{customerId}")
     @PreAuthorize("hasAuthority('USER_VIEW')")
     public ResponseEntity<ApiResponse<CustomerProfileResponse>> getCustomer(@PathVariable UUID customerId) {
@@ -110,6 +111,25 @@ public class CustomerController {
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
                 .message("Customer retrieved successfully.")
+                .data(response)
+                .build();
+
+        return ResponseEntity.ok(body);
+    }
+
+    //for the admin to change a customer's status
+    @PatchMapping("/{customerId}/status")
+    @PreAuthorize("hasAuthority('USER_UPDATE')")
+    public ResponseEntity<ApiResponse<CustomerProfileResponse>> updateCustomerStatus(
+            @PathVariable UUID customerId,
+            @Valid @RequestBody CustomerStatusUpdateRequest request
+    ) {
+        CustomerProfileResponse response = customerService.updateCustomerStatus(customerId, request);
+
+        ApiResponse<CustomerProfileResponse> body = ApiResponse.<CustomerProfileResponse>builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.OK.value())
+                .message("Customer status updated successfully.")
                 .data(response)
                 .build();
 

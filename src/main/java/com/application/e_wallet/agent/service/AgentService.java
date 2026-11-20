@@ -4,6 +4,7 @@ import com.application.e_wallet.agent.dto.AgentAccountDetail;
 import com.application.e_wallet.agent.dto.AgentCreationRequest;
 import com.application.e_wallet.agent.dto.AgentDetailResponse;
 import com.application.e_wallet.agent.dto.AgentListResponse;
+import com.application.e_wallet.agent.dto.AgentListSummary;
 import com.application.e_wallet.agent.dto.AgentOnboardResponse;
 import com.application.e_wallet.agent.dto.AgentStatusUpdateRequest;
 import com.application.e_wallet.agent.dto.AgentSummaryResponse;
@@ -38,6 +39,8 @@ import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,7 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-
+//TODO: 1. One time pin expired automatically after been used 2. Set pin and forget pin APIs
 @Service
 @RequiredArgsConstructor
 public class    AgentService {
@@ -73,6 +76,7 @@ public class    AgentService {
     //======================== CREATE AN AGENT ==================== //
     @Transactional
     public AgentOnboardResponse createAgent(UUID adminUserId, AgentCreationRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         String email = request.email().trim().toLowerCase();
         String normalizedPhone = phoneNumberNormalizer.normalize(request.phone());
@@ -101,7 +105,7 @@ public class    AgentService {
         if (!district.getRegion().getId().equals(region.getId())) {
             throw new BadRequestException("districtId does not belong to regionId");
         }
-
+//todo: take user id from authentication context
         UserEntity admin = userRepository.findById(adminUserId)
                 .orElseThrow(() -> new IllegalStateException("Authenticated user not found"));
 
@@ -183,10 +187,20 @@ public class    AgentService {
                 .toList();
 
         return new AgentListResponse(
+                SummaryList(),
                 agents,
                 page.getNumber(),
                 page.getSize(),
                 page.getTotalElements());
+    }
+
+    //summary List of Agent to be displayed at static card
+    private AgentListSummary SummaryList() {
+        return new AgentListSummary(
+                agentRepository.count(),
+                agentRepository.countByAgentStatus(AgentStatus.ACTIVE),
+                agentRepository.countByAgentStatus(AgentStatus.SUSPENDED),
+                walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT));
     }
 
     // =================== List specific AGENT ================== //
@@ -249,9 +263,7 @@ public class    AgentService {
         return toUpdateResponse(agentRepository.save(agent));
     }
 
-    // Keeps the agent's status, the linked user's login status, and both wallets' status in
-    // lockstep, and forces a logout whenever the agent is no longer ACTIVE. Idempotent - a
-    // no-op when the agent is already in the requested status.
+    //private methode support change status
     private void applyStatus(AgentEntity agent, AgentStatus newStatus) {
         if (agent.getAgentStatus() == newStatus) {
             return;
@@ -448,6 +460,7 @@ public class    AgentService {
         return number;
     }
 
+    //todo: worth case scenario of getting duplicate account? what is the best way/method
     // 12-digit account number, "02" lead, retried on collision.
     private String generateCommissionNumber() {
         String number;
