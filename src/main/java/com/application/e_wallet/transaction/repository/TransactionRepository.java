@@ -99,4 +99,45 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
             """)
     BigDecimal sumAmountOutByWalletId(@Param("walletId") UUID walletId);
 
+    // Date-scoped counterparts of the three queries above, for the customer dashboard's
+    // "this month" cash flow card. Same COMPLETED-only restriction and the same fee-inclusive
+    // "money out" definition.
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
+            WHERE t.receiverWallet.id = :walletId AND t.status = 'COMPLETED'
+            AND t.createdAt BETWEEN :start AND :end
+            """)
+    BigDecimal sumAmountInByWalletIdAndCreatedAtBetween(
+            @Param("walletId") UUID walletId, @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
+
+    @Query("""
+            SELECT COALESCE(SUM(t.amount + t.fee), 0) FROM TransactionEntity t
+            WHERE t.senderWallet.id = :walletId AND t.status = 'COMPLETED'
+            AND t.createdAt BETWEEN :start AND :end
+            """)
+    BigDecimal sumAmountOutByWalletIdAndCreatedAtBetween(
+            @Param("walletId") UUID walletId, @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
+
+    @Query("""
+            SELECT COUNT(t) FROM TransactionEntity t
+            WHERE (t.senderWallet.id = :walletId OR t.receiverWallet.id = :walletId)
+            AND t.status = 'COMPLETED' AND t.createdAt BETWEEN :start AND :end
+            """)
+    long countByWalletIdAndCreatedAtBetween(
+            @Param("walletId") UUID walletId, @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
+
+    // In-progress incoming activity (e.g. a Stripe top-up the customer paid for but whose
+    // webhook hasn't landed yet) - the customer is always the receiver on these, never the sender.
+    @Query("""
+            SELECT COUNT(t) FROM TransactionEntity t
+            WHERE t.receiverWallet.id = :walletId AND t.status = 'PENDING'
+            """)
+    long countPendingByReceiverWalletId(@Param("walletId") UUID walletId);
+
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
+            WHERE t.receiverWallet.id = :walletId AND t.status = 'PENDING'
+            """)
+    BigDecimal sumPendingAmountByReceiverWalletId(@Param("walletId") UUID walletId);
+
 }
