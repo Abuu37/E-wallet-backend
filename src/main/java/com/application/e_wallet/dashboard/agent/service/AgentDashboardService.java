@@ -3,6 +3,12 @@ package com.application.e_wallet.dashboard.agent.service;
 import com.application.e_wallet.agent.dto.FloatHealth;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.repository.AgentRepository;
+import com.application.e_wallet.dashboard.DashboardRange;
+import com.application.e_wallet.dashboard.DashboardRangeSupport;
+import com.application.e_wallet.dashboard.DashboardRangeSupport.DayWindow;
+import com.application.e_wallet.dashboard.DashboardRangeSupport.TransactionPeriod;
+import com.application.e_wallet.dashboard.TransactionTypeMetric;
+import com.application.e_wallet.dashboard.TrendPoint;
 import com.application.e_wallet.dashboard.agent.dto.AgentCommissionAccount;
 import com.application.e_wallet.dashboard.agent.dto.AgentDashboardOverviewResponse;
 import com.application.e_wallet.dashboard.agent.dto.AgentDashboardProfile;
@@ -12,6 +18,7 @@ import com.application.e_wallet.dashboard.agent.dto.AgentFloatRequestStatus;
 import com.application.e_wallet.dashboard.agent.dto.AgentLatestFloatRequest;
 import com.application.e_wallet.dashboard.agent.dto.AgentRecentTransaction;
 import com.application.e_wallet.dashboard.agent.dto.AgentTodaySummary;
+import com.application.e_wallet.dashboard.agent.dto.AgentTransactionVolume;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.repository.CustomerRepository;
@@ -34,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -53,8 +61,15 @@ public class AgentDashboardService {
     private final TransactionRepository transactionRepository;
     private final CustomerRepository customerRepository;
 
+    // Convenience overload - defaults to range=today, matching this endpoint's original
+    // (pre-range) behavior, so every existing caller/test keeps working unchanged.
     @Transactional(readOnly = true)
     public AgentDashboardOverviewResponse getOverview(UUID callerUserId) {
+        return getOverview(callerUserId, "today", null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public AgentDashboardOverviewResponse getOverview(UUID callerUserId, String rawRange, LocalDate from, LocalDate to) {
         AgentEntity agent = agentRepository.findByUserId(callerUserId)
                 .orElseThrow(() -> new BadRequestException("No agent profile for this account"));
 
@@ -70,6 +85,9 @@ public class AgentDashboardService {
         List<TransactionEntity> todayTransactions = transactionRepository.findByStatusAndCreatedAtBetweenAndWalletIdIn(
                 TransactionStatus.COMPLETED.name(), startOfDay, now, walletIds);
 
+        DashboardRange range = DashboardRangeSupport.parseRange(rawRange);
+        TransactionPeriod period = DashboardRangeSupport.resolvePeriod(range, from, to);
+
         return new AgentDashboardOverviewResponse(
                 now,
                 floatWallet.getCurrency(),
@@ -77,7 +95,51 @@ public class AgentDashboardService {
                 buildWallets(floatWallet, commissionWallet),
                 buildFloatRequestStatus(agent.getId()),
                 buildTodaySummary(todayTransactions),
-                buildRecentTransactions(walletIds)
+                buildRecentTransactions(walletIds),
+                buildTransactionVolume(walletIds, range, period)
+        );
+    }
+
+    // Package-private so tests can call this section builder directly without going through
+    // the public getOverview() entry point - the same "today" summary above stays unaffected by
+    // range (it's the at-a-glance commission/cash-in/cash-out numbers); this is the separate,
+    // range-customizable graph the admin dashboard already has (today/week/custom).
+    AgentTransactionVolume buildTransactionVolume(List<UUID> walletIds, DashboardRange range, TransactionPeriod period) {
+        DayWindow window = period.window();
+        List<TransactionEntity> transactions = transactionRepository.findByStatusAndCreatedAtBetweenAndWalletIdIn(
+                TransactionStatus.COMPLETED.name(), window.start(), window.end(), walletIds);
+
+        BigDecimal totalVolume = BigDecimal.ZERO;
+        long totalCount = 0;
+        BigDecimal cashInVolume = BigDecimal.ZERO;
+        long cashInCount = 0;
+        BigDecimal cashOutVolume = BigDecimal.ZERO;
+        long cashOutCount = 0;
+
+        for (TransactionEntity transaction : transactions) {
+            totalVolume = totalVolume.add(transaction.getAmount());
+            totalCount++;
+
+            if (TransactionType.CASH_IN.name().equals(transaction.getTransactionType())) {
+                cashInVolume = cashInVolume.add(transaction.getAmount());
+                cashInCount++;
+            } else if (TransactionType.CASH_OUT.name().equals(transaction.getTransactionType())) {
+                cashOutVolume = cashOutVolume.add(transaction.getAmount());
+                cashOutCount++;
+            }
+        }
+
+        List<TrendPoint> trend = DashboardRangeSupport.buildTrend(range, transactions, period);
+
+        return new AgentTransactionVolume(
+                range.name(),
+                period.periodStart(),
+                period.periodEnd(),
+                normalizeScale(totalVolume),
+                totalCount,
+                new TransactionTypeMetric(cashInCount, normalizeScale(cashInVolume)),
+                new TransactionTypeMetric(cashOutCount, normalizeScale(cashOutVolume)),
+                trend
         );
     }
 

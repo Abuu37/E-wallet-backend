@@ -1,4 +1,4 @@
-package com.application.e_wallet.dashboard.admin.dto;
+package com.application.e_wallet.dashboard;
 
 public enum DashboardRange {
     TODAY,

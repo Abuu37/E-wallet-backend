@@ -3,7 +3,10 @@ package com.application.e_wallet.dashboard.agent.service;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.repository.AgentRepository;
+import com.application.e_wallet.dashboard.DashboardRange;
+import com.application.e_wallet.dashboard.DashboardRangeSupport;
 import com.application.e_wallet.dashboard.agent.dto.AgentDashboardOverviewResponse;
+import com.application.e_wallet.dashboard.agent.dto.AgentTransactionVolume;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.customer.entity.CustomerEntity;
 import com.application.e_wallet.customer.repository.CustomerRepository;
@@ -27,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -179,6 +183,75 @@ class AgentDashboardServiceTest {
         assertThat(response.todaySummary().cashInCount()).isEqualTo(1);
         assertThat(response.todaySummary().cashOutVolume()).isEqualByComparingTo("80000.00");
         assertThat(response.todaySummary().cashOutCount()).isEqualTo(1);
+    }
+
+    @Test
+    void transactionVolumeDefaultsToTodayRangeAndSplitsCashInAndCashOut() {
+        TransactionEntity cashIn = transaction("CASH_IN", floatWallet, otherWallet(), "150000.00", "450.00");
+        TransactionEntity cashOut = transaction("CASH_OUT", otherWallet(), commissionWallet, "80000.00", "0.00");
+        when(transactionRepository.findByStatusAndCreatedAtBetweenAndWalletIdIn(
+                eq(TransactionStatus.COMPLETED.name()), any(), any(), anyList()))
+                .thenReturn(List.of(cashIn, cashOut));
+
+        AgentDashboardOverviewResponse response = agentDashboardService.getOverview(agentUserId);
+
+        AgentTransactionVolume volume = response.transactionVolume();
+        assertThat(volume.range()).isEqualTo("TODAY");
+        assertThat(volume.totalVolume()).isEqualByComparingTo("230000.00");
+        assertThat(volume.totalCount()).isEqualTo(2);
+        assertThat(volume.cashIn().count()).isEqualTo(1);
+        assertThat(volume.cashIn().volume()).isEqualByComparingTo("150000.00");
+        assertThat(volume.cashOut().count()).isEqualTo(1);
+        assertThat(volume.cashOut().volume()).isEqualByComparingTo("80000.00");
+    }
+
+    @Test
+    void transactionVolumeSupportsWeekRangeWithDailyTrend() {
+        AgentDashboardOverviewResponse response = agentDashboardService.getOverview(agentUserId, "week", null, null);
+
+        AgentTransactionVolume volume = response.transactionVolume();
+        assertThat(volume.range()).isEqualTo("WEEK");
+        assertThat(volume.trend()).hasSize(7);
+        LocalDate today = OffsetDateTime.now(DashboardRangeSupport.DASHBOARD_ZONE).toLocalDate();
+        assertThat(volume.periodStart()).isEqualTo(today.minusDays(6));
+        assertThat(volume.periodEnd()).isEqualTo(today);
+    }
+
+    @Test
+    void transactionVolumeSupportsCustomRangeWithExplicitDates() {
+        LocalDate from = LocalDate.of(2026, 11, 1);
+        LocalDate to = LocalDate.of(2026, 11, 3);
+
+        AgentDashboardOverviewResponse response = agentDashboardService.getOverview(agentUserId, "custom", from, to);
+
+        AgentTransactionVolume volume = response.transactionVolume();
+        assertThat(volume.range()).isEqualTo("CUSTOM");
+        assertThat(volume.periodStart()).isEqualTo(from);
+        assertThat(volume.periodEnd()).isEqualTo(to);
+        assertThat(volume.trend()).hasSize(3);
+    }
+
+    @Test
+    void getOverviewRejectsCustomRangeMissingFromOrTo() {
+        assertThatThrownBy(() -> agentDashboardService.getOverview(agentUserId, "custom", null, null))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void getOverviewRejectsAnInvalidRangeValue() {
+        assertThatThrownBy(() -> agentDashboardService.getOverview(agentUserId, "fortnight", null, null))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void buildTransactionVolumeOnlyQueriesThisAgentsOwnWallets() {
+        DashboardRangeSupport.TransactionPeriod period = DashboardRangeSupport.resolvePeriod(DashboardRange.TODAY, null, null);
+        List<UUID> walletIds = List.of(floatWallet.getId(), commissionWallet.getId());
+
+        agentDashboardService.buildTransactionVolume(walletIds, DashboardRange.TODAY, period);
+
+        org.mockito.Mockito.verify(transactionRepository).findByStatusAndCreatedAtBetweenAndWalletIdIn(
+                eq(TransactionStatus.COMPLETED.name()), eq(period.window().start()), eq(period.window().end()), eq(walletIds));
     }
 
     @Test

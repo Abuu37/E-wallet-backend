@@ -7,9 +7,10 @@ import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.customer.entity.CustomerStatus;
 import com.application.e_wallet.customer.repository.CustomerRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
+import com.application.e_wallet.dashboard.DashboardRange;
+import com.application.e_wallet.dashboard.DashboardRangeSupport;
 import com.application.e_wallet.dashboard.admin.dto.ActionAlerts;
 import com.application.e_wallet.dashboard.admin.dto.DashboardOverviewResponse;
-import com.application.e_wallet.dashboard.admin.dto.DashboardRange;
 import com.application.e_wallet.dashboard.admin.dto.LiquidityCards;
 import com.application.e_wallet.dashboard.admin.dto.NetworkStats;
 import com.application.e_wallet.dashboard.admin.dto.RecentTransactionItem;
@@ -100,9 +101,9 @@ class DashboardServiceTest {
 
     @Test
     void buildTransactionMetricsSumsOnlyCompletedTransactionsIntoBreakdownAndTotals() {
-        DashboardService.DayWindow window = new DashboardService.DayWindow(
+        DashboardRangeSupport.DayWindow window = new DashboardRangeSupport.DayWindow(
                 OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-16T10:30:00+03:00"));
-        DashboardService.TransactionPeriod period = new DashboardService.TransactionPeriod(
+        DashboardRangeSupport.TransactionPeriod period = new DashboardRangeSupport.TransactionPeriod(
                 window, LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 16));
 
         TransactionEntity cashIn = transaction("CASH_IN", "COMPLETED", "100.00", "2026-11-16T08:00:00+03:00");
@@ -125,9 +126,9 @@ class DashboardServiceTest {
 
     @Test
     void buildTransactionMetricsBucketsHourlyTrendByLocalHourUpToNowForTodayRange() {
-        DashboardService.DayWindow window = new DashboardService.DayWindow(
+        DashboardRangeSupport.DayWindow window = new DashboardRangeSupport.DayWindow(
                 OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-16T10:30:00+03:00"));
-        DashboardService.TransactionPeriod period = new DashboardService.TransactionPeriod(
+        DashboardRangeSupport.TransactionPeriod period = new DashboardRangeSupport.TransactionPeriod(
                 window, LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 16));
 
         // Stored as UTC — 2026-11-15T21:30:00Z is 2026-11-16T00:30:00+03:00: today's first half-hour, local bucket "00:00".
@@ -148,9 +149,9 @@ class DashboardServiceTest {
 
     @Test
     void buildTransactionMetricsHandlesNoTransactionsToday() {
-        DashboardService.DayWindow window = new DashboardService.DayWindow(
+        DashboardRangeSupport.DayWindow window = new DashboardRangeSupport.DayWindow(
                 OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-16T00:00:00+03:00"));
-        DashboardService.TransactionPeriod period = new DashboardService.TransactionPeriod(
+        DashboardRangeSupport.TransactionPeriod period = new DashboardRangeSupport.TransactionPeriod(
                 window, LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 16));
 
         when(transactionRepository.findByStatusAndCreatedAtBetween("COMPLETED", window.start(), window.end()))
@@ -165,9 +166,9 @@ class DashboardServiceTest {
 
     @Test
     void buildTransactionMetricsBucketsDailyTrendForWeekRange() {
-        DashboardService.DayWindow window = new DashboardService.DayWindow(
+        DashboardRangeSupport.DayWindow window = new DashboardRangeSupport.DayWindow(
                 OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-22T14:00:00+03:00"));
-        DashboardService.TransactionPeriod period = new DashboardService.TransactionPeriod(
+        DashboardRangeSupport.TransactionPeriod period = new DashboardRangeSupport.TransactionPeriod(
                 window, LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 22));
 
         TransactionEntity day1 = transaction("CASH_IN", "COMPLETED", "100.00", "2026-11-16T08:00:00+03:00");
@@ -191,18 +192,18 @@ class DashboardServiceTest {
 
     @Test
     void resolveTransactionPeriodForTodayIsJustTodayWithHourlyWindow() {
-        DashboardService.TransactionPeriod period = DashboardService.resolveTransactionPeriod(DashboardRange.TODAY, null, null);
+        DashboardRangeSupport.TransactionPeriod period = DashboardRangeSupport.resolvePeriod(DashboardRange.TODAY, null, null);
 
-        LocalDate today = OffsetDateTime.now(DashboardService.DASHBOARD_ZONE).toLocalDate();
+        LocalDate today = OffsetDateTime.now(DashboardRangeSupport.DASHBOARD_ZONE).toLocalDate();
         assertThat(period.periodStart()).isEqualTo(today);
         assertThat(period.periodEnd()).isEqualTo(today);
     }
 
     @Test
     void resolveTransactionPeriodForWeekIsRollingSevenDaysEndingToday() {
-        DashboardService.TransactionPeriod period = DashboardService.resolveTransactionPeriod(DashboardRange.WEEK, null, null);
+        DashboardRangeSupport.TransactionPeriod period = DashboardRangeSupport.resolvePeriod(DashboardRange.WEEK, null, null);
 
-        LocalDate today = OffsetDateTime.now(DashboardService.DASHBOARD_ZONE).toLocalDate();
+        LocalDate today = OffsetDateTime.now(DashboardRangeSupport.DASHBOARD_ZONE).toLocalDate();
         assertThat(period.periodStart()).isEqualTo(today.minusDays(6));
         assertThat(period.periodEnd()).isEqualTo(today);
     }
@@ -212,7 +213,7 @@ class DashboardServiceTest {
         LocalDate from = LocalDate.of(2026, 11, 1);
         LocalDate to = LocalDate.of(2026, 11, 7);
 
-        DashboardService.TransactionPeriod period = DashboardService.resolveTransactionPeriod(DashboardRange.CUSTOM, from, to);
+        DashboardRangeSupport.TransactionPeriod period = DashboardRangeSupport.resolvePeriod(DashboardRange.CUSTOM, from, to);
 
         assertThat(period.periodStart()).isEqualTo(from);
         assertThat(period.periodEnd()).isEqualTo(to);
@@ -222,15 +223,15 @@ class DashboardServiceTest {
 
     @Test
     void resolveTransactionPeriodForCustomRejectsMissingFromOrTo() {
-        assertThatThrownBy(() -> DashboardService.resolveTransactionPeriod(DashboardRange.CUSTOM, null, LocalDate.of(2026, 11, 7)))
+        assertThatThrownBy(() -> DashboardRangeSupport.resolvePeriod(DashboardRange.CUSTOM, null, LocalDate.of(2026, 11, 7)))
                 .isInstanceOf(BadRequestException.class);
-        assertThatThrownBy(() -> DashboardService.resolveTransactionPeriod(DashboardRange.CUSTOM, LocalDate.of(2026, 11, 1), null))
+        assertThatThrownBy(() -> DashboardRangeSupport.resolvePeriod(DashboardRange.CUSTOM, LocalDate.of(2026, 11, 1), null))
                 .isInstanceOf(BadRequestException.class);
     }
 
     @Test
     void resolveTransactionPeriodForCustomRejectsFromAfterTo() {
-        assertThatThrownBy(() -> DashboardService.resolveTransactionPeriod(
+        assertThatThrownBy(() -> DashboardRangeSupport.resolvePeriod(
                 DashboardRange.CUSTOM, LocalDate.of(2026, 11, 7), LocalDate.of(2026, 11, 1)))
                 .isInstanceOf(BadRequestException.class);
     }
@@ -301,7 +302,7 @@ class DashboardServiceTest {
 
     @Test
     void buildNetworkStatsCountsActiveAgentsAndCustomersAndSplitsPendingAndFailedTransactions() {
-        DashboardService.DayWindow window = new DashboardService.DayWindow(
+        DashboardRangeSupport.DayWindow window = new DashboardRangeSupport.DayWindow(
                 OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-16T10:30:00+03:00"));
 
         when(agentRepository.countByAgentStatus(AgentStatus.ACTIVE)).thenReturn(85L);

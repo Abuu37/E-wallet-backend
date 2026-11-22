@@ -1,5 +1,7 @@
 package com.application.e_wallet.dashboard.admin.dto;
 
+import com.application.e_wallet.dashboard.TrendPoint;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;

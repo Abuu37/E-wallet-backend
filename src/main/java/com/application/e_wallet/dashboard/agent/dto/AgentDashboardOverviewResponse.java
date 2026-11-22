@@ -10,6 +10,7 @@ public record AgentDashboardOverviewResponse(
         AgentDashboardWallets wallets,
         AgentFloatRequestStatus floatRequestStatus,
         AgentTodaySummary todaySummary,
-        List<AgentRecentTransaction> recentTransactions
+        List<AgentRecentTransaction> recentTransactions,
+        AgentTransactionVolume transactionVolume
 ) {
 }
