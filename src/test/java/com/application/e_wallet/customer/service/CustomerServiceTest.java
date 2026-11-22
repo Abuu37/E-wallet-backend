@@ -69,7 +69,7 @@ class CustomerServiceTest {
             UserEntity user = inv.getArgument(0);
             user.setId(userId);
             if (user.getStatus() == null) {
-                user.setStatus(UserStatus.PENDING);
+                user.setStatus(UserStatus.AWAITING_PIN);
             }
             return user;
         });
