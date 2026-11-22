@@ -16,6 +16,7 @@ import com.application.e_wallet.dashboard.admin.dto.LowFloatAgentsSummary;
 import com.application.e_wallet.dashboard.admin.dto.NetworkStats;
 import com.application.e_wallet.dashboard.admin.dto.PendingFloatRequestItem;
 import com.application.e_wallet.dashboard.admin.dto.PendingFloatRequestsSummary;
+import com.application.e_wallet.dashboard.admin.dto.RecentTransactionItem;
 import com.application.e_wallet.dashboard.admin.dto.TodayTransactionMetrics;
 import com.application.e_wallet.dashboard.admin.dto.TransactionBreakdown;
 import com.application.e_wallet.dashboard.admin.dto.TransactionTypeMetric;
@@ -224,12 +225,31 @@ public class DashboardService {
         );
     }
 
+    // Package-private so tests can call this section builder directly without going through
+    // the public getOverview() entry point.
+    List<RecentTransactionItem> buildRecentTransactions() {
+        List<TransactionEntity> transactions = transactionRepository.findTop10ByOrderByCreatedAtDesc();
+
+        List<RecentTransactionItem> items = new ArrayList<>();
+        for (TransactionEntity transaction : transactions) {
+            items.add(new RecentTransactionItem(
+                    transaction.getReferenceNo(),
+                    transaction.getTransactionType(),
+                    transaction.getAmount(),
+                    transaction.getStatus(),
+                    transaction.getCreatedAt()
+            ));
+        }
+        return items;
+    }
+
     @Transactional(readOnly = true)
     public DashboardOverviewResponse getOverview() {
         DayWindow window = today();
         return new DashboardOverviewResponse(
                 OffsetDateTime.now(DASHBOARD_ZONE), "TZS",
-                buildLiquidityCards(), buildTodayTransactionMetrics(window), buildActionAlerts(), buildNetworkStats(window));
+                buildLiquidityCards(), buildTodayTransactionMetrics(window), buildActionAlerts(), buildNetworkStats(window),
+                buildRecentTransactions());
     }
 
     private static BigDecimal normalizeScale(BigDecimal amount) {

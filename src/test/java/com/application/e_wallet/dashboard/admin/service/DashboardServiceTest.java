@@ -10,6 +10,7 @@ import com.application.e_wallet.dashboard.admin.dto.ActionAlerts;
 import com.application.e_wallet.dashboard.admin.dto.DashboardOverviewResponse;
 import com.application.e_wallet.dashboard.admin.dto.LiquidityCards;
 import com.application.e_wallet.dashboard.admin.dto.NetworkStats;
+import com.application.e_wallet.dashboard.admin.dto.RecentTransactionItem;
 import com.application.e_wallet.dashboard.admin.dto.TodayTransactionMetrics;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
@@ -255,6 +256,9 @@ class DashboardServiceTest {
         when(agentRepository.countByAgentStatus(AgentStatus.ACTIVE)).thenReturn(85L);
         when(customerRepository.countByStatus(CustomerStatus.ACTIVE)).thenReturn(1420L);
 
+        // buildRecentTransactions()
+        when(transactionRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of());
+
         DashboardOverviewResponse result = dashboardService.getOverview();
 
         assertThat(result.currency()).isEqualTo("TZS");
@@ -263,6 +267,33 @@ class DashboardServiceTest {
         assertThat(result.todayTransactionMetrics()).isNotNull();
         assertThat(result.actionAlerts()).isNotNull();
         assertThat(result.networkStats()).isNotNull();
+        assertThat(result.recentTransactions()).isNotNull();
+    }
+
+    @Test
+    void buildRecentTransactionsMapsTop10MostRecentTransactionsAcrossAllTypesAndStatuses() {
+        TransactionEntity stripeTopup = transaction("TOPUP_STRIPE", "PENDING", "5000.00", "2026-11-22T12:00:00+03:00");
+        stripeTopup.setReferenceNo("TXN-20261122-ABCD1234");
+        TransactionEntity cashOut = transaction("CASH_OUT", "COMPLETED", "300.00", "2026-11-22T11:00:00+03:00");
+        cashOut.setReferenceNo("TXN-20261122-EFGH5678");
+
+        when(transactionRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of(stripeTopup, cashOut));
+
+        List<RecentTransactionItem> result = dashboardService.buildRecentTransactions();
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).referenceNo()).isEqualTo("TXN-20261122-ABCD1234");
+        assertThat(result.get(0).transactionType()).isEqualTo("TOPUP_STRIPE");
+        assertThat(result.get(0).status()).isEqualTo("PENDING");
+        assertThat(result.get(0).amount()).isEqualByComparingTo("5000.00");
+        assertThat(result.get(1).referenceNo()).isEqualTo("TXN-20261122-EFGH5678");
+    }
+
+    @Test
+    void buildRecentTransactionsHandlesNoTransactionsYet() {
+        when(transactionRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of());
+
+        assertThat(dashboardService.buildRecentTransactions()).isEmpty();
     }
 
     private static TransactionEntity transaction(String type, String status, String amount, String createdAtIso) {

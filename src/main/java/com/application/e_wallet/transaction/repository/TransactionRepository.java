@@ -32,6 +32,11 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
 
     List<TransactionEntity> findByStatusAndCreatedAtBetween(String status, OffsetDateTime start, OffsetDateTime end);
 
+    // Unscoped by status or date - the admin dashboard's recent-activity feed, across every
+    // transaction type (CASH_IN, CASH_OUT, TOPUP_STRIPE, ...), so admins see pending/failed
+    // attempts too, not just completed ones.
+    List<TransactionEntity> findTop10ByOrderByCreatedAtDesc();
+
     // "Today" for one agent's own wallets - a transaction counts if either side (sender or
     // receiver) is one of the agent's wallets (float or commission).
     @Query("""
