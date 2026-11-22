@@ -1,5 +1,6 @@
 package com.application.e_wallet.dashboard.agent.service;
 
+import com.application.e_wallet.agent.dto.FloatHealth;
 import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.repository.AgentRepository;
@@ -119,19 +120,28 @@ class AgentDashboardServiceTest {
     }
 
     @Test
-    void floatAccountFlagsFloatHearthWhenBalanceBelowLowThreshold() {
+    void floatAccountReportsLowWhenBalanceBelowLowThreshold() {
         floatWallet.setBalance(new BigDecimal("50000.00"));
 
         AgentDashboardOverviewResponse response = agentDashboardService.getOverview(agentUserId);
 
-        assertThat(response.wallets().floatAccount().floatHearth()).isTrue();
+        assertThat(response.wallets().floatAccount().floatHealth()).isEqualTo(FloatHealth.LOW);
     }
 
     @Test
-    void floatAccountDoesNotFlagFloatHearthWhenBalanceAtOrAboveLowThreshold() {
+    void floatAccountReportsCriticalWhenBalanceIsZeroOrBelow() {
+        floatWallet.setBalance(BigDecimal.ZERO);
+
         AgentDashboardOverviewResponse response = agentDashboardService.getOverview(agentUserId);
 
-        assertThat(response.wallets().floatAccount().floatHearth()).isFalse();
+        assertThat(response.wallets().floatAccount().floatHealth()).isEqualTo(FloatHealth.CRITICAL);
+    }
+
+    @Test
+    void floatAccountReportsHealthyWhenBalanceAtOrAboveLowThreshold() {
+        AgentDashboardOverviewResponse response = agentDashboardService.getOverview(agentUserId);
+
+        assertThat(response.wallets().floatAccount().floatHealth()).isEqualTo(FloatHealth.HEALTHY);
         assertThat(response.wallets().floatAccount().accountNumber()).isEqualTo("019482716350");
         assertThat(response.wallets().commissionAccount().accountNumber()).isEqualTo("025819304721");
     }

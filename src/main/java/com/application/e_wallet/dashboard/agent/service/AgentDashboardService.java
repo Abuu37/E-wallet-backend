@@ -152,10 +152,8 @@ public class AgentDashboardService {
     }
 
     private AgentDashboardWallets buildWallets(WalletEntity floatWallet, WalletEntity commissionWallet) {
-        boolean floatHearth = floatWallet.getBalance().compareTo(FloatHealth.LOW_THRESHOLD) < 0;
-
         AgentFloatAccount floatAccount = new AgentFloatAccount(
-                floatWallet.getAccountNumber(), floatWallet.getBalance(), floatHearth);
+                floatWallet.getAccountNumber(), floatWallet.getBalance(), FloatHealth.fromBalance(floatWallet.getBalance()));
         AgentCommissionAccount commissionAccount = new AgentCommissionAccount(
                 commissionWallet.getAccountNumber(), commissionWallet.getBalance());
 
