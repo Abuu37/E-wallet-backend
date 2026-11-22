@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -165,6 +166,28 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(status)
                 .body(response);
+    }
+
+    //============ Access Denied Handler (@PreAuthorize failures) ============
+    // Spring MVC's own exception resolution (this class) runs before the request would
+    // otherwise reach Spring Security's ExceptionTranslationFilter/JwtAccessDeniedHandler,
+    // so without this handler an authority mismatch was being caught by the generic
+    // fallback below and misreported as a 500 instead of a 403.
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException exception, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.FORBIDDEN;
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .message("You do not have permission to access this resource.")
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity
+                .status(status)
+                .body(errorResponse);
     }
 
     //============ Generic Fallback Handler (Logs Trace Internally Only) ============
