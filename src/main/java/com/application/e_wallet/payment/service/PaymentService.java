@@ -76,7 +76,12 @@ public class PaymentService {
                 .amount(request.amount())
                 .fee(fee)
                 .commission(BigDecimal.ZERO)
-                .transactionType(TransactionType.TOPUP_STRIPE.name())
+                // Visible/reported as CASH_IN - a Stripe top-up is a cash-in from the customer's
+                // perspective, and dashboards/summaries only ever bucket by CASH_IN/CASH_OUT.
+                // TOPUP_STRIPE stays the tariff lookup key (line below) and the ledger journal
+                // type, since those have different fee/commission bands and arithmetic (no agent
+                // commission, MINT_FLOW-style wallet debit) that CASH_IN doesn't represent.
+                .transactionType(TransactionType.CASH_IN.name())
                 .status(TransactionStatus.PENDING.name())
                 .externalReference(result.sessionId())
                 .build();

@@ -77,7 +77,7 @@ class PaymentServiceTest {
         assertThat(response.checkoutUrl()).isEqualTo("https://checkout.stripe.com/pay/cs_test_123");
         verify(transactionRepository).save(argThat(t ->
                 t.getStatus().equals(TransactionStatus.PENDING.name())
-                && t.getTransactionType().equals(TransactionType.TOPUP_STRIPE.name())
+                && t.getTransactionType().equals(TransactionType.CASH_IN.name())
                 && t.getSenderWallet().equals(clearingWallet)
                 && t.getReceiverWallet().equals(customerWallet)
                 && t.getAmount().compareTo(new BigDecimal("5000.00")) == 0
