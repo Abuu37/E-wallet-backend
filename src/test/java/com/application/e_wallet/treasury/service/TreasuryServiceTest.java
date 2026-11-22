@@ -5,7 +5,7 @@ import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.ledger.dto.JournalLineRequest;
 import com.application.e_wallet.ledger.entity.EntryType;
-import com.application.e_wallet.ledger.entity.TransactionType;
+import com.application.e_wallet.ledger.entity.LedgerTransactionType;
 import com.application.e_wallet.ledger.repository.TransactionJournalRepository;
 import com.application.e_wallet.ledger.service.LedgerService;
 import com.application.e_wallet.treasury.dto.MintRequest;
@@ -130,7 +130,7 @@ class TreasuryServiceTest {
     void mintPostsTwoDistinctWalletLegs() {
         treasuryService.mint(new MintRequest(new BigDecimal("200.00"), "bank deposit"), adminUserId);
 
-        verify(ledgerService).postJournal(eq(TransactionType.MINT_FLOAT), any(), eq(admin), argThat(lines ->
+        verify(ledgerService).postJournal(eq(LedgerTransactionType.MINT_FLOAT), any(), eq(admin), argThat(lines ->
                 lines.size() == 2
                 && lines.stream().map(JournalLineRequest::walletId).distinct().count() == 2
                 && lines.stream().anyMatch(l -> l.walletId().equals(escrowWallet.getId()) && l.entryType() == EntryType.DEBIT)
@@ -195,7 +195,7 @@ class TreasuryServiceTest {
         assertThat(agentFloatWallet.getBalance()).isEqualTo(new BigDecimal("350.00"));
         verify(walletRepository).save(companyWallet);
         verify(walletRepository).save(agentFloatWallet);
-        verify(ledgerService).postJournal(eq(TransactionType.TOPUP_FLOAT), any(), eq(admin), argThat(lines ->
+        verify(ledgerService).postJournal(eq(LedgerTransactionType.TOPUP_FLOAT), any(), eq(admin), argThat(lines ->
                 lines.size() == 2
                 && lines.stream().map(JournalLineRequest::walletId).distinct().count() == 2
                 && lines.stream().anyMatch(l -> l.walletId().equals(companyWallet.getId()) && l.entryType() == EntryType.DEBIT)
@@ -228,7 +228,7 @@ class TreasuryServiceTest {
         assertThat(agentFloatWallet.getBalance()).isEqualTo(new BigDecimal("60.00"));
         verify(walletRepository).save(companyWallet);
         verify(walletRepository).save(agentFloatWallet);
-        verify(ledgerService).postJournal(eq(TransactionType.AGENT_WITHDRAW), any(), eq(admin), argThat(lines ->
+        verify(ledgerService).postJournal(eq(LedgerTransactionType.AGENT_WITHDRAW), any(), eq(admin), argThat(lines ->
                 lines.size() == 2
                 && lines.stream().map(JournalLineRequest::walletId).distinct().count() == 2
                 && lines.stream().anyMatch(l -> l.walletId().equals(agentFloatWallet.getId()) && l.entryType() == EntryType.DEBIT)

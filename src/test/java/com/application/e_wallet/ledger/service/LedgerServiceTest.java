@@ -3,7 +3,7 @@ package com.application.e_wallet.ledger.service;
 import com.application.e_wallet.ledger.dto.JournalLineRequest;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.entity.TransactionJournalEntity;
-import com.application.e_wallet.ledger.entity.TransactionType;
+import com.application.e_wallet.ledger.entity.LedgerTransactionType;
 import com.application.e_wallet.ledger.repository.TransactionJournalRepository;
 import com.application.e_wallet.user.entity.UserEntity;
 import org.junit.jupiter.api.Test;
@@ -42,10 +42,10 @@ class LedgerServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         TransactionJournalEntity result = ledgerService.postJournal(
-                TransactionType.MINT_FLOAT, "test mint", admin, lines);
+                LedgerTransactionType.MINT_FLOAT, "test mint", admin, lines);
 
         assertThat(result.getLines()).hasSize(2);
-        assertThat(result.getTransactionType()).isEqualTo(TransactionType.MINT_FLOAT);
+        assertThat(result.getTransactionType()).isEqualTo(LedgerTransactionType.MINT_FLOAT);
         assertThat(result.getCreatedBy()).isEqualTo(admin);
     }
 
@@ -57,7 +57,7 @@ class LedgerServiceTest {
                 new JournalLineRequest(UUID.randomUUID(), EntryType.CREDIT, new BigDecimal("50.00"))
         );
 
-        assertThatThrownBy(() -> ledgerService.postJournal(TransactionType.MINT_FLOAT, "bad", admin, lines))
+        assertThatThrownBy(() -> ledgerService.postJournal(LedgerTransactionType.MINT_FLOAT, "bad", admin, lines))
                 .isInstanceOf(IllegalStateException.class);
         verifyNoInteractions(transactionJournalRepository);
     }
@@ -73,7 +73,7 @@ class LedgerServiceTest {
         when(transactionJournalRepository.save(any(TransactionJournalEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        ledgerService.postJournal(TransactionType.MINT_FLOAT, "retry", admin, lines);
+        ledgerService.postJournal(LedgerTransactionType.MINT_FLOAT, "retry", admin, lines);
 
         verify(transactionJournalRepository, times(2)).existsByReferenceNumber(any());
     }
