@@ -23,7 +23,7 @@ public class AgentDashboardController {
     private final AgentDashboardService agentDashboardService;
 
     @GetMapping("/overview")
-    @PreAuthorize("hasAuthority('CASHIER_VIEW')")
+    @PreAuthorize("hasAuthority('AGENT_VIEW')")
     public ResponseEntity<ApiResponse<AgentDashboardOverviewResponse>> getOverview(Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         AgentDashboardOverviewResponse response = agentDashboardService.getOverview(principal.userId());
