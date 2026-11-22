@@ -6,12 +6,14 @@ import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.customer.entity.CustomerStatus;
 import com.application.e_wallet.customer.repository.CustomerRepository;
+import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.dashboard.admin.dto.ActionAlerts;
 import com.application.e_wallet.dashboard.admin.dto.DashboardOverviewResponse;
+import com.application.e_wallet.dashboard.admin.dto.DashboardRange;
 import com.application.e_wallet.dashboard.admin.dto.LiquidityCards;
 import com.application.e_wallet.dashboard.admin.dto.NetworkStats;
 import com.application.e_wallet.dashboard.admin.dto.RecentTransactionItem;
-import com.application.e_wallet.dashboard.admin.dto.TodayTransactionMetrics;
+import com.application.e_wallet.dashboard.admin.dto.TransactionMetrics;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
 import com.application.e_wallet.transaction.entity.TransactionEntity;
@@ -31,6 +33,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -96,9 +99,11 @@ class DashboardServiceTest {
     }
 
     @Test
-    void buildTodayTransactionMetricsSumsOnlyCompletedTransactionsIntoBreakdownAndTotals() {
+    void buildTransactionMetricsSumsOnlyCompletedTransactionsIntoBreakdownAndTotals() {
         DashboardService.DayWindow window = new DashboardService.DayWindow(
                 OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-16T10:30:00+03:00"));
+        DashboardService.TransactionPeriod period = new DashboardService.TransactionPeriod(
+                window, LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 16));
 
         TransactionEntity cashIn = transaction("CASH_IN", "COMPLETED", "100.00", "2026-11-16T08:00:00+03:00");
         TransactionEntity cashOut = transaction("CASH_OUT", "COMPLETED", "50.00", "2026-11-16T09:00:00+03:00");
@@ -106,8 +111,9 @@ class DashboardServiceTest {
         when(transactionRepository.findByStatusAndCreatedAtBetween("COMPLETED", window.start(), window.end()))
                 .thenReturn(List.of(cashIn, cashOut));
 
-        TodayTransactionMetrics result = dashboardService.buildTodayTransactionMetrics(window);
+        TransactionMetrics result = dashboardService.buildTransactionMetrics(DashboardRange.TODAY, period);
 
+        assertThat(result.range()).isEqualTo("TODAY");
         assertThat(result.totalVolume()).isEqualByComparingTo("150.00");
         assertThat(result.totalCount()).isEqualTo(2);
         assertThat(result.breakdown().cashIn().count()).isEqualTo(1);
@@ -118,9 +124,11 @@ class DashboardServiceTest {
     }
 
     @Test
-    void buildTodayTransactionMetricsBucketsHourlyTrendByLocalHourUpToNow() {
+    void buildTransactionMetricsBucketsHourlyTrendByLocalHourUpToNowForTodayRange() {
         DashboardService.DayWindow window = new DashboardService.DayWindow(
                 OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-16T10:30:00+03:00"));
+        DashboardService.TransactionPeriod period = new DashboardService.TransactionPeriod(
+                window, LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 16));
 
         // Stored as UTC — 2026-11-15T21:30:00Z is 2026-11-16T00:30:00+03:00: today's first half-hour, local bucket "00:00".
         TransactionEntity nearMidnight = transaction("CASH_IN", "COMPLETED", "10.00", "2026-11-15T21:30:00Z");
@@ -128,29 +136,109 @@ class DashboardServiceTest {
         when(transactionRepository.findByStatusAndCreatedAtBetween("COMPLETED", window.start(), window.end()))
                 .thenReturn(List.of(nearMidnight));
 
-        TodayTransactionMetrics result = dashboardService.buildTodayTransactionMetrics(window);
+        TransactionMetrics result = dashboardService.buildTransactionMetrics(DashboardRange.TODAY, period);
 
-        assertThat(result.hourlyTrend()).hasSize(11); // "00:00".."10:00" inclusive
-        assertThat(result.hourlyTrend().get(0).hour()).isEqualTo("00:00");
-        assertThat(result.hourlyTrend().get(0).count()).isEqualTo(1);
-        assertThat(result.hourlyTrend().get(0).volume()).isEqualByComparingTo("10.00");
-        assertThat(result.hourlyTrend().get(10).hour()).isEqualTo("10:00");
-        assertThat(result.hourlyTrend().get(10).count()).isZero();
+        assertThat(result.trend()).hasSize(11); // "00:00".."10:00" inclusive
+        assertThat(result.trend().get(0).period()).isEqualTo("00:00");
+        assertThat(result.trend().get(0).count()).isEqualTo(1);
+        assertThat(result.trend().get(0).volume()).isEqualByComparingTo("10.00");
+        assertThat(result.trend().get(10).period()).isEqualTo("10:00");
+        assertThat(result.trend().get(10).count()).isZero();
     }
 
     @Test
-    void buildTodayTransactionMetricsHandlesNoTransactionsToday() {
+    void buildTransactionMetricsHandlesNoTransactionsToday() {
         DashboardService.DayWindow window = new DashboardService.DayWindow(
                 OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-16T00:00:00+03:00"));
+        DashboardService.TransactionPeriod period = new DashboardService.TransactionPeriod(
+                window, LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 16));
 
         when(transactionRepository.findByStatusAndCreatedAtBetween("COMPLETED", window.start(), window.end()))
                 .thenReturn(List.of());
 
-        TodayTransactionMetrics result = dashboardService.buildTodayTransactionMetrics(window);
+        TransactionMetrics result = dashboardService.buildTransactionMetrics(DashboardRange.TODAY, period);
 
         assertThat(result.totalVolume()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(result.totalCount()).isZero();
-        assertThat(result.hourlyTrend()).hasSize(1); // just "00:00"
+        assertThat(result.trend()).hasSize(1); // just "00:00"
+    }
+
+    @Test
+    void buildTransactionMetricsBucketsDailyTrendForWeekRange() {
+        DashboardService.DayWindow window = new DashboardService.DayWindow(
+                OffsetDateTime.parse("2026-11-16T00:00:00+03:00"), OffsetDateTime.parse("2026-11-22T14:00:00+03:00"));
+        DashboardService.TransactionPeriod period = new DashboardService.TransactionPeriod(
+                window, LocalDate.of(2026, 11, 16), LocalDate.of(2026, 11, 22));
+
+        TransactionEntity day1 = transaction("CASH_IN", "COMPLETED", "100.00", "2026-11-16T08:00:00+03:00");
+        TransactionEntity day7 = transaction("CASH_IN", "COMPLETED", "40.00", "2026-11-22T09:00:00+03:00");
+
+        when(transactionRepository.findByStatusAndCreatedAtBetween("COMPLETED", window.start(), window.end()))
+                .thenReturn(List.of(day1, day7));
+
+        TransactionMetrics result = dashboardService.buildTransactionMetrics(DashboardRange.WEEK, period);
+
+        assertThat(result.range()).isEqualTo("WEEK");
+        assertThat(result.periodStart()).isEqualTo(LocalDate.of(2026, 11, 16));
+        assertThat(result.periodEnd()).isEqualTo(LocalDate.of(2026, 11, 22));
+        assertThat(result.trend()).hasSize(7); // one bucket per day, Nov 16..22 inclusive
+        assertThat(result.trend().get(0).period()).isEqualTo("2026-11-16");
+        assertThat(result.trend().get(0).volume()).isEqualByComparingTo("100.00");
+        assertThat(result.trend().get(6).period()).isEqualTo("2026-11-22");
+        assertThat(result.trend().get(6).volume()).isEqualByComparingTo("40.00");
+        assertThat(result.trend().get(3).count()).isZero(); // Nov 19 has no transactions
+    }
+
+    @Test
+    void resolveTransactionPeriodForTodayIsJustTodayWithHourlyWindow() {
+        DashboardService.TransactionPeriod period = DashboardService.resolveTransactionPeriod(DashboardRange.TODAY, null, null);
+
+        LocalDate today = OffsetDateTime.now(DashboardService.DASHBOARD_ZONE).toLocalDate();
+        assertThat(period.periodStart()).isEqualTo(today);
+        assertThat(period.periodEnd()).isEqualTo(today);
+    }
+
+    @Test
+    void resolveTransactionPeriodForWeekIsRollingSevenDaysEndingToday() {
+        DashboardService.TransactionPeriod period = DashboardService.resolveTransactionPeriod(DashboardRange.WEEK, null, null);
+
+        LocalDate today = OffsetDateTime.now(DashboardService.DASHBOARD_ZONE).toLocalDate();
+        assertThat(period.periodStart()).isEqualTo(today.minusDays(6));
+        assertThat(period.periodEnd()).isEqualTo(today);
+    }
+
+    @Test
+    void resolveTransactionPeriodForCustomUsesExactFromAndToAndCapsWindowEndAtEndOfToDay() {
+        LocalDate from = LocalDate.of(2026, 11, 1);
+        LocalDate to = LocalDate.of(2026, 11, 7);
+
+        DashboardService.TransactionPeriod period = DashboardService.resolveTransactionPeriod(DashboardRange.CUSTOM, from, to);
+
+        assertThat(period.periodStart()).isEqualTo(from);
+        assertThat(period.periodEnd()).isEqualTo(to);
+        assertThat(period.window().start()).isEqualTo(OffsetDateTime.parse("2026-11-01T00:00:00+03:00"));
+        assertThat(period.window().end()).isEqualTo(OffsetDateTime.parse("2026-11-08T00:00:00+03:00"));
+    }
+
+    @Test
+    void resolveTransactionPeriodForCustomRejectsMissingFromOrTo() {
+        assertThatThrownBy(() -> DashboardService.resolveTransactionPeriod(DashboardRange.CUSTOM, null, LocalDate.of(2026, 11, 7)))
+                .isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> DashboardService.resolveTransactionPeriod(DashboardRange.CUSTOM, LocalDate.of(2026, 11, 1), null))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void resolveTransactionPeriodForCustomRejectsFromAfterTo() {
+        assertThatThrownBy(() -> DashboardService.resolveTransactionPeriod(
+                DashboardRange.CUSTOM, LocalDate.of(2026, 11, 7), LocalDate.of(2026, 11, 1)))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void getOverviewRejectsAnInvalidRangeValue() {
+        assertThatThrownBy(() -> dashboardService.getOverview("fortnight", null, null))
+                .isInstanceOf(BadRequestException.class);
     }
 
     @Test
@@ -234,7 +322,7 @@ class DashboardServiceTest {
     }
 
     @Test
-    void getOverviewAssemblesAllFourSectionsWithFixedCurrencyAndZoneTimestamp() {
+    void getOverviewAssemblesAllFiveSectionsWithFixedCurrencyAndZoneTimestampForDefaultTodayRange() {
         // Stub every repository call each buildXxx method needs (same stubs as their individual tests,
         // combined) so getOverview() runs end-to-end without NPEs.
 
@@ -243,7 +331,7 @@ class DashboardServiceTest {
         when(transactionJournalLineRepository.sumAmountByEntryType(EntryType.DEBIT)).thenReturn(new BigDecimal("100000.00"));
         when(transactionJournalLineRepository.sumAmountByEntryType(EntryType.CREDIT)).thenReturn(new BigDecimal("100000.00"));
 
-        // buildTodayTransactionMetrics(window) and buildNetworkStats(window)
+        // buildTransactionMetrics(...) and buildNetworkStats(window)
         when(transactionRepository.findByStatusAndCreatedAtBetween(eq("COMPLETED"), any(), any())).thenReturn(List.of());
         when(transactionRepository.findByStatusAndCreatedAtBetween(eq("PENDING"), any(), any())).thenReturn(List.of());
         when(transactionRepository.findByStatusAndCreatedAtBetween(eq("FAILED"), any(), any())).thenReturn(List.of());
@@ -259,12 +347,13 @@ class DashboardServiceTest {
         // buildRecentTransactions()
         when(transactionRepository.findRecentWithWallets(any())).thenReturn(List.of());
 
-        DashboardOverviewResponse result = dashboardService.getOverview();
+        DashboardOverviewResponse result = dashboardService.getOverview("today", null, null);
 
         assertThat(result.currency()).isEqualTo("TZS");
         assertThat(result.timestamp().getOffset()).isEqualTo(ZoneOffset.ofHours(3));
         assertThat(result.liquidityCards()).isNotNull();
-        assertThat(result.todayTransactionMetrics()).isNotNull();
+        assertThat(result.transactionMetrics()).isNotNull();
+        assertThat(result.transactionMetrics().range()).isEqualTo("TODAY");
         assertThat(result.actionAlerts()).isNotNull();
         assertThat(result.networkStats()).isNotNull();
         assertThat(result.recentTransactions()).isNotNull();

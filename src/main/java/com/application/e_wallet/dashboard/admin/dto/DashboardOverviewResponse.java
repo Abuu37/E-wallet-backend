@@ -7,7 +7,7 @@ public record DashboardOverviewResponse(
         OffsetDateTime timestamp,
         String currency,
         LiquidityCards liquidityCards,
-        TodayTransactionMetrics todayTransactionMetrics,
+        TransactionMetrics transactionMetrics,
         ActionAlerts actionAlerts,
         NetworkStats networkStats,
         List<RecentTransactionItem> recentTransactions

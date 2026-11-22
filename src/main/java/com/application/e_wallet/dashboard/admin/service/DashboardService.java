@@ -5,11 +5,12 @@ import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.entity.AgentStatus;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.agent.repository.LowFloatAgentProjection;
+import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.customer.entity.CustomerStatus;
 import com.application.e_wallet.customer.repository.CustomerRepository;
 import com.application.e_wallet.dashboard.admin.dto.ActionAlerts;
 import com.application.e_wallet.dashboard.admin.dto.DashboardOverviewResponse;
-import com.application.e_wallet.dashboard.admin.dto.HourlyTrendPoint;
+import com.application.e_wallet.dashboard.admin.dto.DashboardRange;
 import com.application.e_wallet.dashboard.admin.dto.LiquidityCards;
 import com.application.e_wallet.dashboard.admin.dto.LowFloatAgentItem;
 import com.application.e_wallet.dashboard.admin.dto.LowFloatAgentsSummary;
@@ -17,9 +18,10 @@ import com.application.e_wallet.dashboard.admin.dto.NetworkStats;
 import com.application.e_wallet.dashboard.admin.dto.PendingFloatRequestItem;
 import com.application.e_wallet.dashboard.admin.dto.PendingFloatRequestsSummary;
 import com.application.e_wallet.dashboard.admin.dto.RecentTransactionItem;
-import com.application.e_wallet.dashboard.admin.dto.TodayTransactionMetrics;
 import com.application.e_wallet.dashboard.admin.dto.TransactionBreakdown;
+import com.application.e_wallet.dashboard.admin.dto.TransactionMetrics;
 import com.application.e_wallet.dashboard.admin.dto.TransactionTypeMetric;
+import com.application.e_wallet.dashboard.admin.dto.TrendPoint;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.repository.TransactionJournalLineRepository;
 import com.application.e_wallet.transaction.entity.TransactionEntity;
@@ -39,8 +41,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -69,6 +73,57 @@ public class DashboardService {
         return new DayWindow(startOfDay, now);
     }
 
+    // periodStart/periodEnd are the inclusive calendar-day bounds the caller asked for (or that
+    // TODAY/WEEK resolve to) - kept alongside the instant-based DayWindow because window.end for
+    // a wholly-past CUSTOM range is an exact midnight boundary, from which the *calendar date*
+    // containing it can't be reliably recovered (it would read as the day after periodEnd).
+    record TransactionPeriod(DayWindow window, LocalDate periodStart, LocalDate periodEnd) {
+    }
+
+    // Package-private so tests can resolve the same period the section builder uses.
+    static TransactionPeriod resolveTransactionPeriod(DashboardRange range, LocalDate from, LocalDate to) {
+        OffsetDateTime now = OffsetDateTime.now(DASHBOARD_ZONE);
+        LocalDate today = now.toLocalDate();
+
+        LocalDate periodStart;
+        LocalDate periodEnd;
+        switch (range) {
+            case TODAY -> {
+                periodStart = today;
+                periodEnd = today;
+            }
+            case WEEK -> {
+                periodStart = today.minusDays(6);
+                periodEnd = today;
+            }
+            case CUSTOM -> {
+                if (from == null || to == null) {
+                    throw new BadRequestException("'from' and 'to' are required when range=custom");
+                }
+                if (from.isAfter(to)) {
+                    throw new BadRequestException("'from' must not be after 'to'");
+                }
+                periodStart = from;
+                periodEnd = to;
+            }
+            default -> throw new IllegalStateException("Unhandled range: " + range);
+        }
+
+        OffsetDateTime start = periodStart.atStartOfDay(DASHBOARD_ZONE).toOffsetDateTime();
+        OffsetDateTime endOfPeriod = periodEnd.plusDays(1).atStartOfDay(DASHBOARD_ZONE).toOffsetDateTime();
+        OffsetDateTime end = endOfPeriod.isBefore(now) ? endOfPeriod : now;
+
+        return new TransactionPeriod(new DayWindow(start, end), periodStart, periodEnd);
+    }
+
+    private static DashboardRange parseRange(String rawRange) {
+        try {
+            return DashboardRange.valueOf(rawRange.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("Invalid range '" + rawRange + "'. Must be one of: today, week, custom");
+        }
+    }
+
     LiquidityCards buildLiquidityCards() {
         BigDecimal totalDebits = transactionJournalLineRepository.sumAmountByEntryType(EntryType.DEBIT);
         BigDecimal totalCredits = transactionJournalLineRepository.sumAmountByEntryType(EntryType.CREDIT);
@@ -85,7 +140,8 @@ public class DashboardService {
         );
     }
 
-    TodayTransactionMetrics buildTodayTransactionMetrics(DayWindow window) {
+    TransactionMetrics buildTransactionMetrics(DashboardRange range, TransactionPeriod period) {
+        DayWindow window = period.window();
         List<TransactionEntity> transactions = transactionRepository.findByStatusAndCreatedAtBetween(
                 TransactionStatus.COMPLETED.name(), window.start(), window.end());
 
@@ -103,9 +159,11 @@ public class DashboardService {
                 summarize(transactions, TransactionType.SERVICE_COMMISSION)
         );
 
-        List<HourlyTrendPoint> hourlyTrend = buildHourlyTrend(transactions, window);
+        List<TrendPoint> trend = range == DashboardRange.TODAY
+                ? buildHourlyTrend(transactions, window)
+                : buildDailyTrend(transactions, period.periodStart(), period.periodEnd());
 
-        return new TodayTransactionMetrics(totalVolume, totalCount, breakdown, hourlyTrend);
+        return new TransactionMetrics(range.name(), period.periodStart(), period.periodEnd(), totalVolume, totalCount, breakdown, trend);
     }
 
     private static TransactionTypeMetric summarize(List<TransactionEntity> transactions, TransactionType type) {
@@ -128,7 +186,7 @@ public class DashboardService {
         return new TransactionTypeMetric(count, normalizeScale(volume));
     }
 
-    private static List<HourlyTrendPoint> buildHourlyTrend(List<TransactionEntity> transactions, DayWindow window) {
+    private static List<TrendPoint> buildHourlyTrend(List<TransactionEntity> transactions, DayWindow window) {
         int lastHour = window.end().atZoneSameInstant(DASHBOARD_ZONE).getHour();
 
         long[] counts = new long[lastHour + 1];
@@ -145,11 +203,39 @@ public class DashboardService {
             }
         }
 
-        List<HourlyTrendPoint> hourlyTrend = new ArrayList<>();
+        List<TrendPoint> hourlyTrend = new ArrayList<>();
         for (int hour = 0; hour <= lastHour; hour++) {
-            hourlyTrend.add(new HourlyTrendPoint(String.format("%02d:00", hour), normalizeScale(volumes[hour]), counts[hour]));
+            hourlyTrend.add(new TrendPoint(String.format("%02d:00", hour), normalizeScale(volumes[hour]), counts[hour]));
         }
         return hourlyTrend;
+    }
+
+    // One bucket per calendar day in [periodStart, periodEnd], inclusive on both ends - used for
+    // WEEK/CUSTOM ranges, where hourly buckets would be unreadable (168+ bars for a week).
+    private static List<TrendPoint> buildDailyTrend(List<TransactionEntity> transactions, LocalDate periodStart, LocalDate periodEnd) {
+        int days = (int) ChronoUnit.DAYS.between(periodStart, periodEnd) + 1;
+
+        long[] counts = new long[days];
+        BigDecimal[] volumes = new BigDecimal[days];
+        for (int i = 0; i < days; i++) {
+            volumes[i] = BigDecimal.ZERO;
+        }
+
+        for (TransactionEntity transaction : transactions) {
+            LocalDate day = transaction.getCreatedAt().atZoneSameInstant(DASHBOARD_ZONE).toLocalDate();
+            int index = (int) ChronoUnit.DAYS.between(periodStart, day);
+            if (index >= 0 && index < days) {
+                counts[index]++;
+                volumes[index] = volumes[index].add(transaction.getAmount());
+            }
+        }
+
+        List<TrendPoint> dailyTrend = new ArrayList<>();
+        for (int i = 0; i < days; i++) {
+            LocalDate day = periodStart.plusDays(i);
+            dailyTrend.add(new TrendPoint(day.toString(), normalizeScale(volumes[i]), counts[i]));
+        }
+        return dailyTrend;
     }
 
 
@@ -249,11 +335,17 @@ public class DashboardService {
     }
 
     @Transactional(readOnly = true)
-    public DashboardOverviewResponse getOverview() {
-        DayWindow window = today();
+    public DashboardOverviewResponse getOverview(String rawRange, LocalDate from, LocalDate to) {
+        DashboardRange range = parseRange(rawRange);
+        TransactionPeriod period = resolveTransactionPeriod(range, from, to);
+        // networkStats stays fixed to "today" regardless of the requested range - it's an
+        // operational/real-time alert ("how much is pending/failing right now"), not historical
+        // volume reporting, so it shouldn't change meaning when range=week or range=custom.
+        DayWindow todayWindow = today();
+
         return new DashboardOverviewResponse(
                 OffsetDateTime.now(DASHBOARD_ZONE), "TZS",
-                buildLiquidityCards(), buildTodayTransactionMetrics(window), buildActionAlerts(), buildNetworkStats(window),
+                buildLiquidityCards(), buildTransactionMetrics(range, period), buildActionAlerts(), buildNetworkStats(todayWindow),
                 buildRecentTransactions());
     }
 
