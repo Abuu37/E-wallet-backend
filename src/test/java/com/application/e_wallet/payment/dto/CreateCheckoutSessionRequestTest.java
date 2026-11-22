@@ -46,7 +46,7 @@ class CreateCheckoutSessionRequestTest {
         // to @DecimalMax - both constraints are expected to fire together at this boundary.
         assertThat(violations)
                 .extracting(ConstraintViolation::getMessage)
-                .contains("Maximum top-up amount is 999,999.99");
+                .contains("Maximum top-up amount is 999,999.99 (charged in USD via Stripe)");
     }
 
     @Test
@@ -74,7 +74,7 @@ class CreateCheckoutSessionRequestTest {
 
         assertThat(violations).hasSize(1);
         assertThat(violations.iterator().next().getMessage())
-                .isEqualTo("Minimum top-up amount is 1,000 TZS");
+                .isEqualTo("Minimum top-up amount is 1,000.00 (charged in USD via Stripe)");
     }
 
     @Test
