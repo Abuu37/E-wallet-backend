@@ -33,6 +33,7 @@ import com.application.e_wallet.wallet.entity.WalletEntity;
 import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -228,7 +229,7 @@ public class DashboardService {
     // Package-private so tests can call this section builder directly without going through
     // the public getOverview() entry point.
     List<RecentTransactionItem> buildRecentTransactions() {
-        List<TransactionEntity> transactions = transactionRepository.findTop10ByOrderByCreatedAtDesc();
+        List<TransactionEntity> transactions = transactionRepository.findRecentWithWallets(PageRequest.of(0, 10));
 
         List<RecentTransactionItem> items = new ArrayList<>();
         for (TransactionEntity transaction : transactions) {
@@ -237,7 +238,11 @@ public class DashboardService {
                     transaction.getTransactionType(),
                     transaction.getAmount(),
                     transaction.getStatus(),
-                    transaction.getCreatedAt()
+                    transaction.getCreatedAt(),
+                    transaction.getSenderWallet().getAccountName(),
+                    transaction.getSenderWallet().getAccountNumber(),
+                    transaction.getReceiverWallet().getAccountName(),
+                    transaction.getReceiverWallet().getAccountNumber()
             ));
         }
         return items;

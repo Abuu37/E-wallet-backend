@@ -8,6 +8,10 @@ public record RecentTransactionItem(
         String transactionType,
         BigDecimal amount,
         String status,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        String fromAccountName,
+        String fromAccountNumber,
+        String toAccountName,
+        String toAccountNumber
 ) {
 }

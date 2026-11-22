@@ -34,8 +34,15 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
 
     // Unscoped by status or date - the admin dashboard's recent-activity feed, across every
     // transaction type (CASH_IN, CASH_OUT, TOPUP_STRIPE, ...), so admins see pending/failed
-    // attempts too, not just completed ones.
-    List<TransactionEntity> findTop10ByOrderByCreatedAtDesc();
+    // attempts too, not just completed ones. JOIN FETCH avoids an N+1 lazy-load per row for
+    // the sender/receiver wallet account name and number the dashboard also displays.
+    @Query("""
+            SELECT t FROM TransactionEntity t
+            JOIN FETCH t.senderWallet
+            JOIN FETCH t.receiverWallet
+            ORDER BY t.createdAt DESC
+            """)
+    List<TransactionEntity> findRecentWithWallets(Pageable pageable);
 
     // "Today" for one agent's own wallets - a transaction counts if either side (sender or
     // receiver) is one of the agent's wallets (float or commission).

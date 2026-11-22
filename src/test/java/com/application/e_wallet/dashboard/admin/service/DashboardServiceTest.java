@@ -257,7 +257,7 @@ class DashboardServiceTest {
         when(customerRepository.countByStatus(CustomerStatus.ACTIVE)).thenReturn(1420L);
 
         // buildRecentTransactions()
-        when(transactionRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of());
+        when(transactionRepository.findRecentWithWallets(any())).thenReturn(List.of());
 
         DashboardOverviewResponse result = dashboardService.getOverview();
 
@@ -272,12 +272,20 @@ class DashboardServiceTest {
 
     @Test
     void buildRecentTransactionsMapsTop10MostRecentTransactionsAcrossAllTypesAndStatuses() {
+        WalletEntity clearingWallet = WalletEntity.builder()
+                .accountName("Payment Gateway Clearing").accountNumber("COMPANY-CLEARING-ACCOUNT").build();
+        WalletEntity customerWallet = WalletEntity.builder()
+                .accountName("Jane Doe").accountNumber("0123456789").build();
         TransactionEntity stripeTopup = transaction("TOPUP_STRIPE", "PENDING", "5000.00", "2026-11-22T12:00:00+03:00");
         stripeTopup.setReferenceNo("TXN-20261122-ABCD1234");
+        stripeTopup.setSenderWallet(clearingWallet);
+        stripeTopup.setReceiverWallet(customerWallet);
         TransactionEntity cashOut = transaction("CASH_OUT", "COMPLETED", "300.00", "2026-11-22T11:00:00+03:00");
         cashOut.setReferenceNo("TXN-20261122-EFGH5678");
+        cashOut.setSenderWallet(customerWallet);
+        cashOut.setReceiverWallet(clearingWallet);
 
-        when(transactionRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of(stripeTopup, cashOut));
+        when(transactionRepository.findRecentWithWallets(any())).thenReturn(List.of(stripeTopup, cashOut));
 
         List<RecentTransactionItem> result = dashboardService.buildRecentTransactions();
 
@@ -286,12 +294,16 @@ class DashboardServiceTest {
         assertThat(result.get(0).transactionType()).isEqualTo("TOPUP_STRIPE");
         assertThat(result.get(0).status()).isEqualTo("PENDING");
         assertThat(result.get(0).amount()).isEqualByComparingTo("5000.00");
+        assertThat(result.get(0).fromAccountName()).isEqualTo("Payment Gateway Clearing");
+        assertThat(result.get(0).fromAccountNumber()).isEqualTo("COMPANY-CLEARING-ACCOUNT");
+        assertThat(result.get(0).toAccountName()).isEqualTo("Jane Doe");
+        assertThat(result.get(0).toAccountNumber()).isEqualTo("0123456789");
         assertThat(result.get(1).referenceNo()).isEqualTo("TXN-20261122-EFGH5678");
     }
 
     @Test
     void buildRecentTransactionsHandlesNoTransactionsYet() {
-        when(transactionRepository.findTop10ByOrderByCreatedAtDesc()).thenReturn(List.of());
+        when(transactionRepository.findRecentWithWallets(any())).thenReturn(List.of());
 
         assertThat(dashboardService.buildRecentTransactions()).isEmpty();
     }
