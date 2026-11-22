@@ -49,7 +49,8 @@ public class SecurityConfig {
                                 "/api/v1/otp/verify",
                                 "/api/v1/otp/resend",
                                 "/api/v1/locations/regions/",
-                                "/api/v1/locations/districts/"
+                                "/api/v1/locations/districts/",
+                                "/api/v1/payments/stripe/webhook"
                         ).permitAll()
                         // Any new endpoint added under /api/v1/auth/** or /api/v1/otp/**
                         // is protected by default — add it above explicitly only if it
