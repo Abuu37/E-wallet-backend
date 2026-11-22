@@ -100,7 +100,7 @@ public class PaymentService {
             return;
         }
 
-        Optional<TransactionEntity> maybeTransaction = transactionRepository.findByExternalReference(event.sessionId());
+        Optional<TransactionEntity> maybeTransaction = transactionRepository.findByExternalReferenceForUpdate(event.sessionId());
         if (maybeTransaction.isEmpty()) {
             return;
         }

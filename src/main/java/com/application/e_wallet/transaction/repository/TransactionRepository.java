@@ -1,8 +1,10 @@
 package com.application.e_wallet.transaction.repository;
 
 import com.application.e_wallet.transaction.entity.TransactionEntity;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,6 +19,16 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
     boolean existsByReferenceNo(String referenceNo);
 
     Optional<TransactionEntity> findByExternalReference(String externalReference);
+
+    // Method name ends in "ForUpdate" to signal pessimistic locking to callers; the suffix is
+    // not derivable by Spring Data's query parser, so the query is spelled out explicitly here
+    // rather than relying on name-derivation (which would fail at startup on "ForUpdate"). See
+    // WalletRepository.findByAccountNumberForUpdate for the same pattern. This closes a race
+    // where two concurrent deliveries of the same webhook event both read the transaction while
+    // it is still PENDING and both pass the idempotency check in PaymentService.handleWebhookEvent.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM TransactionEntity t WHERE t.externalReference = :externalReference")
+    Optional<TransactionEntity> findByExternalReferenceForUpdate(@Param("externalReference") String externalReference);
 
     List<TransactionEntity> findByStatusAndCreatedAtBetween(String status, OffsetDateTime start, OffsetDateTime end);
 

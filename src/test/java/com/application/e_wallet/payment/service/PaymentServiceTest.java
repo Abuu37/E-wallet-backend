@@ -131,7 +131,7 @@ class PaymentServiceTest {
     void handleWebhookEventIgnoresUnknownSessionId() {
         when(stripeGatewayClient.parseEvent("payload", "sig"))
                 .thenReturn(new WebhookEventResult("checkout.session.completed", "cs_test_404", "pi_1"));
-        when(transactionRepository.findByExternalReference("cs_test_404")).thenReturn(Optional.empty());
+        when(transactionRepository.findByExternalReferenceForUpdate("cs_test_404")).thenReturn(Optional.empty());
 
         paymentService.handleWebhookEvent("payload", "sig");
 
@@ -144,7 +144,7 @@ class PaymentServiceTest {
                 .status(TransactionStatus.COMPLETED.name()).externalReference("cs_test_1").build();
         when(stripeGatewayClient.parseEvent("payload", "sig"))
                 .thenReturn(new WebhookEventResult("checkout.session.completed", "cs_test_1", "pi_1"));
-        when(transactionRepository.findByExternalReference("cs_test_1")).thenReturn(Optional.of(alreadyDone));
+        when(transactionRepository.findByExternalReferenceForUpdate("cs_test_1")).thenReturn(Optional.of(alreadyDone));
 
         paymentService.handleWebhookEvent("payload", "sig");
 
@@ -162,7 +162,7 @@ class PaymentServiceTest {
                 .receiverWallet(customerWallet).amount(new BigDecimal("5000.00")).fee(BigDecimal.ZERO).build();
         when(stripeGatewayClient.parseEvent("payload", "sig"))
                 .thenReturn(new WebhookEventResult("checkout.session.expired", "cs_test_2", null));
-        when(transactionRepository.findByExternalReference("cs_test_2")).thenReturn(Optional.of(pending));
+        when(transactionRepository.findByExternalReferenceForUpdate("cs_test_2")).thenReturn(Optional.of(pending));
 
         paymentService.handleWebhookEvent("payload", "sig");
 
@@ -186,7 +186,7 @@ class PaymentServiceTest {
 
         when(stripeGatewayClient.parseEvent("payload", "sig"))
                 .thenReturn(new WebhookEventResult("checkout.session.completed", "cs_test_3", "pi_1"));
-        when(transactionRepository.findByExternalReference("cs_test_3")).thenReturn(Optional.of(pending));
+        when(transactionRepository.findByExternalReferenceForUpdate("cs_test_3")).thenReturn(Optional.of(pending));
         when(walletRepository.findByUserIdAndWalletTypeForUpdate(customerUserId, WalletType.CUSTOMER_MAIN))
                 .thenReturn(Optional.of(customerWallet));
         when(walletRepository.findByWalletTypeForUpdate(WalletType.PAYMENT_GATEWAY_CLEARING))
@@ -204,5 +204,37 @@ class PaymentServiceTest {
                 && lines.stream().anyMatch(l -> l.walletId().equals(clearingWallet.getId()) && l.entryType() == EntryType.DEBIT && l.amount().compareTo(new BigDecimal("5000.00")) == 0)
                 && lines.stream().anyMatch(l -> l.walletId().equals(customerWallet.getId()) && l.entryType() == EntryType.CREDIT && l.amount().compareTo(new BigDecimal("5000.00")) == 0)
         ));
+    }
+
+    @Test
+    void handleWebhookEventLooksUpTransactionWithPessimisticLockNotPlainRead() {
+        UUID customerUserId = UUID.randomUUID();
+        WalletEntity customerWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).walletType(WalletType.CUSTOMER_MAIN).balance(BigDecimal.ZERO)
+                .user(UserEntity.builder().id(customerUserId).build()).build();
+        WalletEntity clearingWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).walletType(WalletType.PAYMENT_GATEWAY_CLEARING).balance(BigDecimal.ZERO).build();
+        TransactionEntity pending = TransactionEntity.builder()
+                .status(TransactionStatus.PENDING.name()).externalReference("cs_test_lock")
+                .receiverWallet(customerWallet).amount(new BigDecimal("5000.00")).fee(BigDecimal.ZERO).build();
+        UserEntity systemUser = UserEntity.builder().id(UUID.fromString("11111111-1111-1111-1111-111111111111")).build();
+
+        when(stripeGatewayClient.parseEvent("payload", "sig"))
+                .thenReturn(new WebhookEventResult("checkout.session.completed", "cs_test_lock", "pi_1"));
+        when(transactionRepository.findByExternalReferenceForUpdate("cs_test_lock")).thenReturn(Optional.of(pending));
+        when(walletRepository.findByUserIdAndWalletTypeForUpdate(customerUserId, WalletType.CUSTOMER_MAIN))
+                .thenReturn(Optional.of(customerWallet));
+        when(walletRepository.findByWalletTypeForUpdate(WalletType.PAYMENT_GATEWAY_CLEARING))
+                .thenReturn(Optional.of(clearingWallet));
+        when(userRepository.findById(systemUser.getId())).thenReturn(Optional.of(systemUser));
+
+        paymentService.handleWebhookEvent("payload", "sig");
+
+        // The idempotency-check lookup must use the pessimistic-lock variant so two concurrent
+        // deliveries of the same webhook event serialize on this row instead of both reading it
+        // as PENDING and both crediting the wallets (the race this fix closes). The plain,
+        // unlocked finder must never be used for this lookup.
+        verify(transactionRepository).findByExternalReferenceForUpdate("cs_test_lock");
+        verify(transactionRepository, never()).findByExternalReference(any());
     }
 }
