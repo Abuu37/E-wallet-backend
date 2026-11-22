@@ -6,6 +6,7 @@ import java.util.List;
 public record AgentDashboardOverviewResponse(
         OffsetDateTime timestamp,
         String currency,
+        AgentSummary summary,
         AgentDashboardProfile agentProfile,
         AgentDashboardWallets wallets,
         AgentFloatRequestStatus floatRequestStatus,

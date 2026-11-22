@@ -72,6 +72,14 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
             """)
     long countByWalletId(@Param("walletId") UUID walletId);
 
+    // Same as countByWalletId, but for an agent's float+commission wallets together -
+    // all-time lifetime count, unscoped by date/status.
+    @Query("""
+            SELECT COUNT(t) FROM TransactionEntity t
+            WHERE t.senderWallet.id IN :walletIds OR t.receiverWallet.id IN :walletIds
+            """)
+    long countByWalletIdIn(@Param("walletIds") List<UUID> walletIds);
+
     // Money received: the full amount, no fee deducted on the receiving side today.
     // Restricted to COMPLETED rows only - since TOPUP_STRIPE introduced PENDING/FAILED rows
     // (every prior transaction type completed synchronously), an abandoned/expired checkout

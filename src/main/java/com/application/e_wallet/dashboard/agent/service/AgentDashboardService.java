@@ -17,6 +17,7 @@ import com.application.e_wallet.dashboard.agent.dto.AgentFloatAccount;
 import com.application.e_wallet.dashboard.agent.dto.AgentFloatRequestStatus;
 import com.application.e_wallet.dashboard.agent.dto.AgentLatestFloatRequest;
 import com.application.e_wallet.dashboard.agent.dto.AgentRecentTransaction;
+import com.application.e_wallet.dashboard.agent.dto.AgentSummary;
 import com.application.e_wallet.dashboard.agent.dto.AgentTodaySummary;
 import com.application.e_wallet.dashboard.agent.dto.AgentTransactionVolume;
 import com.application.e_wallet.common.exception.BadRequestException;
@@ -91,12 +92,27 @@ public class AgentDashboardService {
         return new AgentDashboardOverviewResponse(
                 now,
                 floatWallet.getCurrency(),
+                buildSummary(floatWallet, commissionWallet, walletIds),
                 buildProfile(agent),
                 buildWallets(floatWallet, commissionWallet),
                 buildFloatRequestStatus(agent.getId()),
                 buildTodaySummary(todayTransactions),
                 buildRecentTransactions(walletIds),
                 buildTransactionVolume(walletIds, range, period)
+        );
+    }
+
+    // Package-private so tests can call this section builder directly without going through
+    // the public getOverview() entry point. All-time (unscoped by date/range) at-a-glance card:
+    // current balances plus the lifetime count of transactions touching either wallet.
+    AgentSummary buildSummary(WalletEntity floatWallet, WalletEntity commissionWallet, List<UUID> walletIds) {
+        long totalTransactions = transactionRepository.countByWalletIdIn(walletIds);
+
+        return new AgentSummary(
+                floatWallet.getBalance(),
+                commissionWallet.getBalance(),
+                totalTransactions,
+                FloatHealth.fromBalance(floatWallet.getBalance())
         );
     }
 

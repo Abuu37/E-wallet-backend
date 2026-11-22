@@ -100,6 +100,7 @@ class AgentDashboardServiceTest {
         lenient().when(transactionRepository.findByStatusAndCreatedAtBetweenAndWalletIdIn(any(), any(), any(), anyList()))
                 .thenReturn(List.of());
         lenient().when(transactionRepository.findRecentByWalletIdIn(anyList(), any(Pageable.class))).thenReturn(List.of());
+        lenient().when(transactionRepository.countByWalletIdIn(anyList())).thenReturn(0L);
     }
 
     @Test
@@ -262,6 +263,28 @@ class AgentDashboardServiceTest {
 
         org.mockito.Mockito.verify(transactionRepository).findByStatusAndCreatedAtBetweenAndWalletIdIn(
                 eq(TransactionStatus.COMPLETED.name()), eq(period.window().start()), eq(period.window().end()), eq(walletIds));
+    }
+
+    @Test
+    void summaryReportsCurrentBalancesLifetimeTransactionCountAndFloatHealth() {
+        when(transactionRepository.countByWalletIdIn(List.of(floatWallet.getId(), commissionWallet.getId())))
+                .thenReturn(37L);
+
+        AgentDashboardOverviewResponse response = agentDashboardService.getOverview(agentUserId);
+
+        assertThat(response.summary().totalFloatBalance()).isEqualByComparingTo(floatWallet.getBalance());
+        assertThat(response.summary().totalCommissionBalance()).isEqualByComparingTo(commissionWallet.getBalance());
+        assertThat(response.summary().totalTransactions()).isEqualTo(37L);
+        assertThat(response.summary().floatHealth()).isEqualTo(FloatHealth.HEALTHY);
+    }
+
+    @Test
+    void summaryReflectsLowFloatHealthWhenBalanceIsBelowThreshold() {
+        floatWallet.setBalance(new BigDecimal("50000.00"));
+
+        AgentDashboardOverviewResponse response = agentDashboardService.getOverview(agentUserId);
+
+        assertThat(response.summary().floatHealth()).isEqualTo(FloatHealth.LOW);
     }
 
     @Test
