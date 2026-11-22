@@ -9,11 +9,14 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface TransactionRepository extends JpaRepository<TransactionEntity, UUID> {
 
     boolean existsByReferenceNo(String referenceNo);
+
+    Optional<TransactionEntity> findByExternalReference(String externalReference);
 
     List<TransactionEntity> findByStatusAndCreatedAtBetween(String status, OffsetDateTime start, OffsetDateTime end);
 
