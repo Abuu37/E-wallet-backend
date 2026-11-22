@@ -156,7 +156,12 @@ public class PaymentService {
         }
 
         transaction.setStatus(TransactionStatus.COMPLETED.name());
-        transaction.setExternalReference(event.paymentIntentId());
+        // Guard against wiping out the stored session id: if the payment intent id couldn't be
+        // read off the event, keep the existing externalReference rather than overwriting it
+        // with null.
+        if (event.paymentIntentId() != null) {
+            transaction.setExternalReference(event.paymentIntentId());
+        }
         transactionRepository.save(transaction);
     }
 

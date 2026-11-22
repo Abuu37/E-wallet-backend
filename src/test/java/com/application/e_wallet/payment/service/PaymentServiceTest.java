@@ -207,6 +207,36 @@ class PaymentServiceTest {
     }
 
     @Test
+    void handleWebhookEventKeepsExistingExternalReferenceWhenPaymentIntentIdIsMissing() {
+        UUID customerUserId = UUID.randomUUID();
+        WalletEntity customerWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).walletType(WalletType.CUSTOMER_MAIN).balance(BigDecimal.ZERO)
+                .user(UserEntity.builder().id(customerUserId).build()).build();
+        WalletEntity clearingWallet = WalletEntity.builder()
+                .id(UUID.randomUUID()).walletType(WalletType.PAYMENT_GATEWAY_CLEARING).balance(BigDecimal.ZERO).build();
+        TransactionEntity pending = TransactionEntity.builder()
+                .status(TransactionStatus.PENDING.name()).externalReference("cs_test_no_pi")
+                .receiverWallet(customerWallet).amount(new BigDecimal("5000.00")).fee(BigDecimal.ZERO).build();
+        UserEntity systemUser = UserEntity.builder().id(UUID.fromString("11111111-1111-1111-1111-111111111111")).build();
+
+        // paymentIntentId is null here - the fix must not let this null overwrite the stored
+        // session id (externalReference) on the transaction.
+        when(stripeGatewayClient.parseEvent("payload", "sig"))
+                .thenReturn(new WebhookEventResult("checkout.session.completed", "cs_test_no_pi", null));
+        when(transactionRepository.findByExternalReferenceForUpdate("cs_test_no_pi")).thenReturn(Optional.of(pending));
+        when(walletRepository.findByUserIdAndWalletTypeForUpdate(customerUserId, WalletType.CUSTOMER_MAIN))
+                .thenReturn(Optional.of(customerWallet));
+        when(walletRepository.findByWalletTypeForUpdate(WalletType.PAYMENT_GATEWAY_CLEARING))
+                .thenReturn(Optional.of(clearingWallet));
+        when(userRepository.findById(systemUser.getId())).thenReturn(Optional.of(systemUser));
+
+        paymentService.handleWebhookEvent("payload", "sig");
+
+        assertThat(pending.getStatus()).isEqualTo(TransactionStatus.COMPLETED.name());
+        assertThat(pending.getExternalReference()).isEqualTo("cs_test_no_pi");
+    }
+
+    @Test
     void handleWebhookEventLooksUpTransactionWithPessimisticLockNotPlainRead() {
         UUID customerUserId = UUID.randomUUID();
         WalletEntity customerWallet = WalletEntity.builder()

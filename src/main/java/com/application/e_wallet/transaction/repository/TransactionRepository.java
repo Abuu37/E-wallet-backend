@@ -61,17 +61,21 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
     long countByWalletId(@Param("walletId") UUID walletId);
 
     // Money received: the full amount, no fee deducted on the receiving side today.
+    // Restricted to COMPLETED rows only - since TOPUP_STRIPE introduced PENDING/FAILED rows
+    // (every prior transaction type completed synchronously), an abandoned/expired checkout
+    // session must not be counted as real money in the customer's summary.
     @Query("""
             SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
-            WHERE t.receiverWallet.id = :walletId
+            WHERE t.receiverWallet.id = :walletId AND t.status = 'COMPLETED'
             """)
     BigDecimal sumAmountInByWalletId(@Param("walletId") UUID walletId);
 
     // Money paid out: amount + fee, since the fee is debited from the same wallet
     // alongside the principal amount (see TransactionService.cashOut).
+    // Restricted to COMPLETED rows only - see sumAmountInByWalletId above.
     @Query("""
             SELECT COALESCE(SUM(t.amount + t.fee), 0) FROM TransactionEntity t
-            WHERE t.senderWallet.id = :walletId
+            WHERE t.senderWallet.id = :walletId AND t.status = 'COMPLETED'
             """)
     BigDecimal sumAmountOutByWalletId(@Param("walletId") UUID walletId);
 

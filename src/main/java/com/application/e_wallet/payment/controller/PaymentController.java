@@ -47,7 +47,7 @@ public class PaymentController {
     @PostMapping("/webhook")
     public ResponseEntity<Void> webhook(
             @RequestBody String payload,
-            @RequestHeader("Stripe-Signature") String signature) {
+            @RequestHeader(value = "Stripe-Signature", required = false) String signature) {
         paymentService.handleWebhookEvent(payload, signature);
         return ResponseEntity.ok().build();
     }
