@@ -2,6 +2,7 @@ package com.application.e_wallet.transaction.repository;
 
 import com.application.e_wallet.transaction.entity.TransactionEntity;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -17,6 +18,34 @@ import java.util.UUID;
 public interface TransactionRepository extends JpaRepository<TransactionEntity, UUID> {
 
     boolean existsByReferenceNo(String referenceNo);
+
+    Optional<TransactionEntity> findByReferenceNo(String referenceNo);
+
+    // "View all transactions" (admin) - JOIN FETCH avoids an N+1 lazy-load per row for the
+    // sender/receiver wallet account name/number the list response displays. A separate
+    // countQuery is required since Spring Data's auto-derived count can't always strip a
+    // JOIN FETCH cleanly.
+    @Query(value = """
+            SELECT t FROM TransactionEntity t
+            JOIN FETCH t.senderWallet
+            JOIN FETCH t.receiverWallet
+            """,
+            countQuery = "SELECT COUNT(t) FROM TransactionEntity t")
+    Page<TransactionEntity> findAllWithWallets(Pageable pageable);
+
+    // "View own transactions" (customer/agent) - same JOIN FETCH reasoning as above, scoped to
+    // the caller's own wallet id(s) (one for a customer, two - float + commission - for an agent).
+    @Query(value = """
+            SELECT t FROM TransactionEntity t
+            JOIN FETCH t.senderWallet
+            JOIN FETCH t.receiverWallet
+            WHERE t.senderWallet.id IN :walletIds OR t.receiverWallet.id IN :walletIds
+            """,
+            countQuery = """
+            SELECT COUNT(t) FROM TransactionEntity t
+            WHERE t.senderWallet.id IN :walletIds OR t.receiverWallet.id IN :walletIds
+            """)
+    Page<TransactionEntity> findByWalletIdInWithWallets(@Param("walletIds") List<UUID> walletIds, Pageable pageable);
 
     Optional<TransactionEntity> findByExternalReference(String externalReference);
 

@@ -18,6 +18,9 @@ import com.application.e_wallet.transaction.dto.CashInRequest;
 import com.application.e_wallet.transaction.dto.CashInResponse;
 import com.application.e_wallet.transaction.dto.CashOutRequest;
 import com.application.e_wallet.transaction.dto.CashOutResponse;
+import com.application.e_wallet.transaction.dto.TransactionDetailResponse;
+import com.application.e_wallet.transaction.dto.TransactionListItem;
+import com.application.e_wallet.transaction.dto.TransactionListResponse;
 import com.application.e_wallet.transaction.entity.TransactionEntity;
 import com.application.e_wallet.transaction.entity.TransactionStatus;
 import com.application.e_wallet.transaction.entity.TransactionType;
@@ -28,6 +31,8 @@ import com.application.e_wallet.wallet.entity.WalletStatus;
 import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -293,6 +298,93 @@ public class TransactionService {
                 new CashOutResponse.CustomerLeg(customer.getPhoneNumber(), customerWallet.getBalance()),
                 new CashOutResponse.AgentLeg(agentFloatWallet.getAccountNumber(), agentFloatWallet.getBalance(), agentCommissionWallet.getBalance()),
                 OffsetDateTime.now()
+        );
+    }
+
+    //=================== VIEW TRANSACTIONS: "all" (admin) or "own" (customer/agent) ==============
+    @Transactional(readOnly = true)
+    public TransactionListResponse listTransactions(UUID callerUserId, boolean canViewAll, Pageable pageable) {
+        Page<TransactionEntity> page = canViewAll
+                ? transactionRepository.findAllWithWallets(pageable)
+                : transactionRepository.findByWalletIdInWithWallets(resolveOwnWalletIds(callerUserId), pageable);
+
+        List<TransactionListItem> items = page.getContent().stream()
+                .map(this::toListItem)
+                .toList();
+
+        return new TransactionListResponse(items, page.getNumber(), page.getSize(), page.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
+    public TransactionDetailResponse getTransactionDetail(UUID callerUserId, boolean canViewAll, String referenceNo) {
+        TransactionEntity transaction = transactionRepository.findByReferenceNo(referenceNo)
+                .orElseThrow(() -> new BadRequestException("Transaction not found"));
+
+        if (!canViewAll) {
+            List<UUID> ownWalletIds = resolveOwnWalletIds(callerUserId);
+            boolean isOwn = ownWalletIds.contains(transaction.getSenderWallet().getId())
+                    || ownWalletIds.contains(transaction.getReceiverWallet().getId());
+            // Same "not found" message whether the reference genuinely doesn't exist or it
+            // belongs to someone else - a distinct "forbidden" response would confirm to the
+            // caller that a reference they don't own actually exists.
+            if (!isOwn) {
+                throw new BadRequestException("Transaction not found");
+            }
+        }
+
+        return toDetailResponse(transaction);
+    }
+
+    // A caller is either a customer (one wallet: CUSTOMER_MAIN) or an agent (two wallets: float +
+    // commission) - never both. Tried in that order since customers vastly outnumber agents.
+    private List<UUID> resolveOwnWalletIds(UUID userId) {
+        if (customerRepository.findByUserId(userId).isPresent()) {
+            WalletEntity wallet = walletRepository.findByUserIdAndWalletType(userId, WalletType.CUSTOMER_MAIN)
+                    .orElseThrow(() -> new IllegalStateException("Customer wallet not initialized"));
+            return List.of(wallet.getId());
+        }
+
+        if (agentRepository.findByUserId(userId).isPresent()) {
+            WalletEntity floatWallet = walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_FLOAT)
+                    .orElseThrow(() -> new IllegalStateException("Agent float wallet not found"));
+            WalletEntity commissionWallet = walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_COMMISSION)
+                    .orElseThrow(() -> new IllegalStateException("Agent commission wallet not found"));
+            return List.of(floatWallet.getId(), commissionWallet.getId());
+        }
+
+        throw new BadRequestException("No customer or agent profile for this account");
+    }
+
+    private TransactionListItem toListItem(TransactionEntity transaction) {
+        return new TransactionListItem(
+                transaction.getReferenceNo(),
+                transaction.getTransactionType(),
+                transaction.getAmount(),
+                transaction.getFee(),
+                transaction.getCommission(),
+                transaction.getStatus(),
+                transaction.getCreatedAt(),
+                transaction.getSenderWallet().getAccountNumber(),
+                transaction.getSenderWallet().getAccountName(),
+                transaction.getReceiverWallet().getAccountNumber(),
+                transaction.getReceiverWallet().getAccountName()
+        );
+    }
+
+    private TransactionDetailResponse toDetailResponse(TransactionEntity transaction) {
+        return new TransactionDetailResponse(
+                transaction.getReferenceNo(),
+                transaction.getTransactionType(),
+                transaction.getAmount(),
+                transaction.getFee(),
+                transaction.getCommission(),
+                transaction.getStatus(),
+                transaction.getCreatedAt(),
+                transaction.getSenderWallet().getAccountNumber(),
+                transaction.getSenderWallet().getAccountName(),
+                transaction.getReceiverWallet().getAccountNumber(),
+                transaction.getReceiverWallet().getAccountName(),
+                transaction.getExternalReference()
         );
     }
 
