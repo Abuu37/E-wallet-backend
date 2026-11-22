@@ -181,7 +181,7 @@ CREATE UNIQUE INDEX uk_wallets_singleton_company_types
 -- company-level wallets (seeded in V26).
 INSERT INTO wallets (id, user_id, wallet_type, account_number, currency, balance, status, version, account_name, created_at, updated_at)
 VALUES (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', 'PAYMENT_GATEWAY_CLEARING',
-        'COMPANY-GATEWAY-CLEARING-ACCOUNT', 'TZS', 0, 'ACTIVE', 0, 'Payment Gateway Clearing', NOW(), NOW());
+        'COMPANY-CLEARING-ACCOUNT', 'TZS', 0, 'ACTIVE', 0, 'Payment Gateway Clearing', NOW(), NOW());
 
 -- External gateway reference, for webhook idempotency and reconciliation.
 -- Partial unique index so existing/future NULL rows (every non-Stripe
