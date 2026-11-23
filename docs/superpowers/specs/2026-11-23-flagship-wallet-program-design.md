@@ -1,6 +1,6 @@
 # Flagship e-Wallet Program (Web now, Mobile next) — Design
 
-Status: **draft for review** (builder-checked; your answers of 23 Nov recorded). One confirmation is left: approach C (see last section). Everything marked *(my call)* is a proposal you can overturn.
+Status: **draft for review** (builder-checked; your answers of 23 Nov recorded). Approach C confirmed. Waiting only for your approval of the document. Everything marked *(my call)* is a proposal you can overturn.
 
 All technical design (architecture, database, diagrams, Docker, Git, CI) lives in this one document; diagrams are Mermaid and render on GitHub and in IntelliJ. Companion: the visual plan (personas, roadmap, data map, user stories, journeys, code audit) lives on the Design canvas "e-Wallet Product Plan". This document is the written design that implementation plans are built from; the canvas is the picture of it.
 
@@ -86,7 +86,7 @@ Three orderings were considered. All end in the same place; they differ in what 
 
 **In plain words:** all three reach the same finished app. They only differ in what gets built first. A fixes the hidden safety problems before anything new. B builds the impressive screens first and fixes safety later. C does a short safety fix (about a week and a half), then goes straight to the impressive parts.
 
-**Picked:** C, my recommendation for a portfolio and pitch. A reviewer or investor who tries to break the demo (double-tapping *Send*, asking where the customer PIN goes) gets a good answer, and the visible features still arrive early. *Awaiting your confirmation.*
+**Picked:** C *(your decision, 23 Nov)*, my recommendation for a portfolio and pitch. A reviewer or investor who tries to break the demo (double-tapping *Send*, asking where the customer PIN goes) gets a good answer, and the visible features still arrive early. *Confirmed by you, 23 Nov.*
 
 ### Delivery timeline (approach C, indicative)
 
@@ -1584,11 +1584,11 @@ jobs:
 | # | Question | Answer (23 Nov) |
 |---|---|---|
 | 1 | What is it for? | Portfolio project and pitch demo; real money later. Plaid as the API provider for now. |
-| 2 | Approach | Explained in plain words under Approaches. **C recommended, awaiting your confirmation.** |
+| 2 | Approach | **C**: short safety fix, then visible wins (confirmed). |
 | 3 | Withdrawal model | Customer-initiated, as recommended. |
 | 4 | Limits | Tiered by Plaid KYC result; demo amounts in Phase 1. |
 | 5 | Push access | You'll connect the Claude GitHub App. |
 
-**Still needed from you:** confirm approach C (or pick A or B), and approve this document. After that, the next step is a step-by-step build plan for Phase 0.
+**Still needed from you:** approve this document. After that, the next step is a step-by-step build plan for Phase 0.
 
 **Setup you'll need for Plaid:** a free Plaid Dashboard account, Sandbox keys, Identity Verification enabled for Sandbox (Products page → *Enable Sandbox*; Plaid may ask for a product-access request), and an IDV template.
