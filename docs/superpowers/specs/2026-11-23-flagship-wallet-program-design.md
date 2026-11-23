@@ -136,56 +136,858 @@ Mobile client on the same `/api/v1`; adds only `devices` (binding, push token) a
 
 ### Database (`e_walletDB`)
 
-Generated on 23 Nov by replaying every Flyway migration from `E-wallet-backend@84f2bc1` into PostgreSQL 16. The result is 20 tables: the 19 below plus `flyway_schema_history`, which holds 46 migrations numbered V1–V47 (there is no V12). There are 175 columns and 23 foreign keys. Every table has a UUID `id` primary key except `role_permissions`, whose key is `(role_id, permission_id)`. Arrows mark foreign keys; `(null)` marks nullable columns.
+Everything here comes from the real schema. On 23 Nov every Flyway migration from `E-wallet-backend@84f2bc1` was replayed into PostgreSQL 16 and read back from the catalog: columns, defaults, constraints and indexes.
+
+#### At a glance
+
+| | |
+|---|---|
+| Engine | PostgreSQL 16, managed by Flyway (46 files, V1–V47; there is no V12) |
+| Tables | 20: 19 application tables + `flyway_schema_history` |
+| Columns / foreign keys | 175 / 23 |
+| Hibernate | `ddl-auto=validate`: entities must match migrations exactly |
+| Market | Tanzania: TZS currency, NIDA numbers, 31 regions and 170 districts seeded |
+
+#### Conventions
+
+- **Primary keys:** `id uuid` on every table, except `role_permissions` (composite `role_id, permission_id`) and Flyway's own table.
+- **Public identifiers:** most tables also carry `reference uuid` (default `gen_random_uuid()`), which is safe to expose instead of `id`. Money records use readable references: `TXN-yyyyMMdd-XXXXXXXX` for transactions and `<TYPE>-yyyyMMdd-XXXXXXXX` for journals.
+- **Money:** `numeric(19,2)`, never floating point. Currency is on the wallet (`TZS`).
+- **Time:** `timestamptz`. The business day is `Africa/Dar_es_Salaam`.
+- **Enums:** stored as `varchar` holding the Java enum name. Only a few have database `CHECK`s (agent gender, treasury status and type).
+- **Profiles:** `users` holds identity and credentials only. Names and KYC live on exactly one of `customers`, `agents` or `staff` (one-to-one via a unique `user_id`).
+- **Company wallets** belong to the `SYSTEM` user. A partial unique index allows exactly one each of COMPANY_MASTER_ACCOUNT, REVENUE, ESCROW_BANK and COMMISSION.
+
+#### Entity-relationship diagram (ERD)
+
+Renders on GitHub and in IntelliJ's Markdown preview (static copy: `assets/2026-11-23-erd.png`). `PK` is a primary key, `FK` a foreign key, `UK` a unique column.
+
+```mermaid
+erDiagram
+    users {
+        uuid id PK
+        varchar email UK
+        varchar phone UK
+        varchar pin_hash
+        varchar status
+        timestamptz created_at
+        timestamptz updated_at
+        uuid reference UK
+        varchar username UK
+        timestamptz last_login_at
+        uuid role_id FK
+    }
+    roles {
+        uuid id PK
+        varchar name UK
+        varchar description
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    role_permissions {
+        uuid role_id PK,FK
+        uuid permission_id PK,FK
+    }
+    permissions {
+        uuid id PK
+        varchar name UK
+        varchar description
+        timestamptz created_at
+        timestamptz updated_at
+        uuid module_reference FK
+    }
+    modules {
+        uuid id PK
+        uuid reference
+        varchar name UK
+        varchar description
+        timestamptz created_at
+    }
+    user_sessions {
+        uuid id PK
+        uuid user_id FK
+        varchar refresh_token_hash
+        timestamptz expires_at
+        bool revoked
+        timestamptz created_at
+        timestamptz revoked_at
+    }
+    otp_verification {
+        uuid id PK
+        uuid user_id FK
+        varchar otp_hash
+        timestamptz expires_at
+        int attempts
+        int max_attempts
+        bool verified
+        timestamptz verified_at
+        timestamptz created_at
+    }
+    pin_reset_tokens {
+        uuid id PK
+        uuid user_id FK
+        varchar otp_hash
+        timestamptz expires_at
+        int attempts
+        int max_attempts
+        bool used
+        timestamptz used_at
+        timestamptz created_at
+    }
+    customers {
+        uuid id PK
+        uuid user_id FK
+        varchar status
+        timestamptz created_at
+        timestamptz updated_at
+        uuid reference
+        varchar first_name
+        varchar middle_name
+        varchar last_name
+        varchar email
+        varchar phone_number
+        varchar nida_number
+        date date_of_birth
+        varchar address
+    }
+    agents {
+        uuid id PK
+        uuid user_id FK
+        varchar agent_number UK
+        timestamptz created_at
+        timestamptz update_at
+        varchar gender
+        date date_of_birth
+        uuid region_id FK
+        uuid district_id FK
+        uuid reference
+        varchar first_name
+        varchar middle_name
+        varchar last_name
+        varchar email
+        varchar phone_number
+        varchar business_name
+        varchar tin_number
+        varchar agent_status
+        uuid created_by FK
+    }
+    staff {
+        uuid id PK
+        uuid reference
+        uuid user_id FK
+        varchar staff_no UK
+        varchar job_title
+        varchar first_name
+        varchar middle_name
+        varchar last_name
+        varchar email
+        varchar phone_number
+        uuid created_by FK
+        varchar status
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    regions {
+        uuid id PK
+        varchar external_id
+        varchar name
+        varchar slug
+    }
+    districts {
+        uuid id PK
+        varchar external_id
+        varchar name
+        varchar slug
+        uuid region_id FK
+    }
+    wallets {
+        uuid id PK
+        varchar currency
+        varchar status
+        timestamptz created_at
+        timestamptz updated_at
+        uuid user_id FK
+        varchar wallet_type
+        varchar account_number UK
+        numeric balance
+        bigint version
+        uuid reference
+        varchar account_name
+    }
+    transactions {
+        uuid id PK
+        varchar reference_no UK
+        uuid sender_wallet_id FK
+        uuid receiver_wallet_id FK
+        numeric amount
+        numeric fee
+        numeric commission
+        varchar transaction_type
+        varchar status
+        timestamptz created_at
+    }
+    transaction_journal {
+        uuid id PK
+        varchar reference_number UK
+        varchar transaction_type
+        varchar description
+        uuid created_by FK
+        timestamptz created_at
+    }
+    transaction_journal_line {
+        uuid id PK
+        uuid journal_id FK
+        varchar entry_type
+        numeric amount
+        uuid wallet_id FK
+    }
+    tariffs {
+        uuid id PK
+        uuid reference
+        varchar transaction_type
+        numeric min_amount
+        numeric max_amount
+        numeric fee
+        numeric agent_commission
+        bool active
+        timestamptz created_at
+    }
+    treasury_requests {
+        uuid id PK
+        uuid agent_id FK
+        numeric amount
+        varchar reason
+        varchar status
+        uuid decided_by FK
+        varchar decision_note
+        timestamptz decided_at
+        timestamptz created_at
+        timestamptz updated_at
+        varchar request_ref UK
+        varchar request_type
+        varchar external_reference
+    }
+    roles ||--o{ users : "grants role to"
+    roles ||--o{ role_permissions : "has"
+    permissions ||--o{ role_permissions : "granted via"
+    modules ||--o{ permissions : "groups"
+    users ||--o{ user_sessions : "signs in with"
+    users ||--o| otp_verification : "verifies with"
+    users ||--o| pin_reset_tokens : "resets PIN with"
+    users ||--o| customers : "is profile of"
+    users ||--o| agents : "is profile of"
+    users ||--o| staff : "is profile of"
+    users ||--o{ agents : "created_by"
+    users ||--o{ staff : "created_by"
+    regions ||--o{ districts : "contains"
+    regions ||--o{ agents : "locates"
+    districts ||--o{ agents : "locates"
+    users ||--o{ wallets : "owns"
+    wallets ||--o{ transactions : "sender"
+    wallets ||--o{ transactions : "receiver"
+    users ||--o{ transaction_journal : "created_by"
+    transaction_journal ||--|{ transaction_journal_line : "has 2+ lines"
+    wallets ||--o{ transaction_journal_line : "moved by"
+    agents ||--o{ treasury_requests : "raises"
+    users ||--o{ treasury_requests : "decided_by"
+```
+
+#### Domain model (UML class diagram)
+
+The JPA entities as the code sees them: key attributes, the enums they use, and how they associate. Columns already listed in the ERD are left out unless they carry behaviour.
+
+```mermaid
+classDiagram
+    direction LR
+    class UserEntity {
+        UUID id
+        String email
+        String phone
+        String pinHash
+        UserStatus status
+        Instant lastLoginAt
+    }
+    class RoleEntity {
+        String name
+    }
+    class PermissionEntity {
+        String name
+    }
+    class ModuleEntity {
+        String name
+    }
+    class CustomerEntity {
+        String nidaNumber
+        CustomerStatus status
+    }
+    class AgentEntity {
+        String agentNumber
+        String businessName
+        String tinNumber
+        AgentStatus agentStatus
+    }
+    class StaffEntity {
+        String staffNo
+        String jobTitle
+        StaffStatus status
+    }
+    class WalletEntity {
+        WalletType walletType
+        String accountNumber
+        BigDecimal balance
+        String currency
+        WalletStatus status
+        Long version
+    }
+    class TransactionEntity {
+        String referenceNo
+        BigDecimal amount
+        BigDecimal fee
+        BigDecimal commission
+        String transactionType
+        String status
+    }
+    class TransactionJournalEntity {
+        String referenceNumber
+        LedgerTransactionType transactionType
+    }
+    class TransactionJournalLineEntity {
+        UUID walletId
+        EntryType entryType
+        BigDecimal amount
+    }
+    class TariffEntity {
+        String transactionType
+        BigDecimal minAmount
+        BigDecimal maxAmount
+        BigDecimal fee
+        BigDecimal agentCommission
+        Boolean active
+    }
+    class TreasuryRequestEntity {
+        String requestRef
+        BigDecimal amount
+        RequestType requestType
+        RequestStatus status
+    }
+    class RegionEntity
+    class DistrictEntity
+
+    UserEntity "*" --> "1" RoleEntity : role
+    RoleEntity "*" --> "*" PermissionEntity : permissions
+    PermissionEntity "*" --> "1" ModuleEntity : module
+    CustomerEntity "0..1" --> "1" UserEntity : user
+    AgentEntity "0..1" --> "1" UserEntity : user
+    StaffEntity "0..1" --> "1" UserEntity : user
+    AgentEntity "*" --> "1" RegionEntity : region
+    AgentEntity "*" --> "1" DistrictEntity : district
+    DistrictEntity "*" --> "1" RegionEntity : region
+    WalletEntity "*" --> "1" UserEntity : owner
+    TransactionEntity "*" --> "1" WalletEntity : senderWallet
+    TransactionEntity "*" --> "1" WalletEntity : receiverWallet
+    TransactionJournalEntity "1" *-- "2..*" TransactionJournalLineEntity : lines
+    TransactionJournalEntity "*" --> "1" UserEntity : createdBy
+    TreasuryRequestEntity "*" --> "1" AgentEntity : agent
+    TreasuryRequestEntity "*" --> "0..1" UserEntity : decidedBy
+
+    class WalletType {
+        <<enumeration>>
+        COMPANY_MASTER_ACCOUNT
+        REVENUE
+        ESCROW_BANK
+        COMMISSION
+        AGENT_FLOAT
+        AGENT_COMMISSION
+        CUSTOMER_MAIN
+    }
+    class LedgerTransactionType {
+        <<enumeration>>
+        MINT_FLOAT
+        TOPUP_FLOAT
+        AGENT_WITHDRAW
+        TOPUP_COMMISSION
+        CASH_IN
+        CASH_OUT
+    }
+    class EntryType {
+        <<enumeration>>
+        DEBIT
+        CREDIT
+    }
+    WalletEntity ..> WalletType
+    TransactionJournalEntity ..> LedgerTransactionType
+    TransactionJournalLineEntity ..> EntryType
+```
+
+`TransactionJournalLineEntity.walletId` is a plain UUID in Java but a real foreign key in the database. The journal owns its lines (composition): they are saved and never edited with it.
+
+#### How a posting touches the tables (UML sequence: agent cash-in today)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Agent
+    participant TC as TransactionController
+    participant TS as TransactionService
+    participant DB as PostgreSQL
+    participant LS as LedgerService
+    Agent->>TC: POST /api/v1/transactions/cash-in (account, phone, amount, agent PIN)
+    TC->>TS: cashIn(request, agentUserId)
+    TS->>DB: SELECT agents, wallets (AGENT_FLOAT) FOR UPDATE
+    TS->>TS: check agent ACTIVE, account matches, PIN matches
+    TS->>DB: SELECT wallets (customer) FOR UPDATE, customers
+    TS->>DB: SELECT tariffs (CASH_IN band for amount)
+    TS->>DB: SELECT wallets (COMMISSION, AGENT_COMMISSION) FOR UPDATE
+    TS->>TS: check balances, move 4 balances in memory
+    TS->>LS: postJournal(CASH_IN, 4 lines)
+    LS->>LS: reject if debits ≠ credits
+    LS->>DB: INSERT transaction_journal + 4 transaction_journal_line
+    TS->>DB: UPDATE 4 wallets (version + 1)
+    TS->>DB: INSERT transactions (COMPLETED)
+    TS-->>Agent: 200 CashInResponse (reference, balances)
+    Note over TS,DB: All of it is one @Transactional unit, so any failure rolls everything back
+```
+
+| Flow | Journal lines (debit → credit) |
+|---|---|
+| Cash-in | Agent float → Customer main (amount); Commission pool → Agent commission (commission) |
+| Cash-out | Customer main (amount + fee) → Agent float (amount) + Revenue (fee); Commission pool → Agent commission (commission) |
+| Transfer *(Phase 1)* | Customer A (amount + fee) → Customer B (amount) + Revenue (fee) |
+
+#### Data dictionary
+
+Null "yes" means the column is nullable. Key: `PK` primary key, `FK` foreign key, `UQ` unique. Enum columns name their Java enum; values are in the next table.
 
 #### Identity & access
 
-- **`users`**: `id` uuid, `email` varchar(255), `phone` varchar(30), `pin_hash` varchar(255) (null), `status` varchar(30), `created_at` timestamptz, `updated_at` timestamptz, `reference` uuid, `username` varchar(100), `last_login_at` timestamptz (null), `role_id` uuid → `roles`
-- **`roles`**: `id` uuid, `name` varchar(50), `description` varchar(255) (null), `created_at` timestamptz, `updated_at` timestamptz. *4 seeded: ADMIN, CUSTOMER, AGENT, SYSTEM.*
-- **`role_permissions`**: `role_id` uuid → `roles`, `permission_id` uuid → `permissions`
-- **`permissions`**: `id` uuid, `name` varchar(255), `description` varchar(255) (null), `created_at` timestamptz, `updated_at` timestamptz, `module_reference` uuid → `modules`. *36 seeded.*
-- **`modules`**: `id` uuid, `reference` uuid, `name` varchar(50), `description` varchar(255), `created_at` timestamptz. *10 seeded.*
-- **`user_sessions`**: `id` uuid, `user_id` uuid → `users`, `refresh_token_hash` varchar(255), `expires_at` timestamptz, `revoked` boolean, `created_at` timestamptz, `revoked_at` timestamptz (null)
-- **`otp_verification`**: `id` uuid, `user_id` uuid → `users`, `otp_hash` varchar(255), `expires_at` timestamptz, `attempts` integer, `max_attempts` integer, `verified` boolean, `verified_at` timestamptz (null), `created_at` timestamptz
-- **`pin_reset_tokens`**: `id` uuid, `user_id` uuid → `users`, `otp_hash` varchar(255), `expires_at` timestamptz, `attempts` integer, `max_attempts` integer, `used` boolean, `used_at` timestamptz (null), `created_at` timestamptz
+##### `users`
+
+Login identity for every person and the SYSTEM account. Holds credentials (PIN hash) and one role; names live on the profile tables.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `email` | varchar(255) | no |  | UQ | Email; unique; used for login and OTP emails |
+| `phone` | varchar(30) | no |  | UQ | Phone; unique; used for login |
+| `pin_hash` | varchar(255) | yes |  |  | BCrypt hash of the 4-digit PIN; null until the PIN is set |
+| `status` | varchar(30) | no |  |  | `UserStatus`: login state of the account |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+| `updated_at` | timestamptz | no |  |  | When the row was last changed |
+| `reference` | uuid | no | `gen_random_uuid()` | UQ | Public UUID safe to expose in APIs instead of `id` |
+| `username` | varchar(100) | no |  | UQ | Unique username (ERD alignment; login still uses email/phone) |
+| `last_login_at` | timestamptz | yes |  |  | Last successful login |
+| `role_id` | uuid | no |  | FK → `roles` | The user’s single role |
+
+Constraints & indexes: indexes: `idx_users_phone` (phone), `idx_users_email` (email)
+
+##### `roles`
+
+The four roles a user can have. One role per user.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `name` | varchar(50) | no |  | UQ | `ADMIN`, `CUSTOMER`, `AGENT`, `SYSTEM` |
+| `description` | varchar(255) | yes |  |  | Human-readable description |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+| `updated_at` | timestamptz | no |  |  | When the row was last changed |
+
+Constraints & indexes: indexes: `idx_roles_name` (name)
+
+##### `permissions`
+
+Fine-grained authorities checked by `@PreAuthorize` (e.g. `FLOAT_MANAGE`). Each belongs to one module.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `name` | varchar(255) | no |  | UQ | Authority string, e.g. `TOPUP_CREATE` |
+| `description` | varchar(255) | yes |  |  | What the permission allows |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+| `updated_at` | timestamptz | no |  |  | When the row was last changed |
+| `module_reference` | uuid | no |  | FK → `modules` | Module this permission belongs to |
+
+Constraints & indexes: indexes: `idx_permissions_name` (name)
+
+##### `role_permissions`
+
+Which permissions each role grants (many-to-many).
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `role_id` | uuid | no |  | PK, FK → `roles` | Role |
+| `permission_id` | uuid | no |  | PK, FK → `permissions` | Permission granted to the role |
+
+Constraints & indexes: indexes: `idx_role_permissions_permission_id` (permission_id)
+
+##### `modules`
+
+Functional areas that group permissions (AGENT, WALLET, TREASURY…), used for menus and the role builder.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `reference` | uuid | no | `gen_random_uuid()` | UQ | Public UUID safe to expose in APIs instead of `id` |
+| `name` | varchar(50) | no |  | UQ | Module code, e.g. `WALLET` |
+| `description` | varchar(255) | no |  |  | What the module covers |
+| `created_at` | timestamptz | no | `now()` |  | When the row was created |
+
+##### `user_sessions`
+
+One row per issued refresh token, so sessions can be listed and revoked.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `user_id` | uuid | no |  | FK → `users` | Owning user |
+| `refresh_token_hash` | varchar(255) | no |  | UQ | Hash of the refresh token (never the token itself) |
+| `expires_at` | timestamptz | no |  |  | Refresh token expiry (7 days) |
+| `revoked` | boolean | no | `false` |  | True after logout, rotation or PIN reset |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+| `revoked_at` | timestamptz | yes |  |  | When it was revoked |
+
+Constraints & indexes: indexes: `idx_user_sessions_expires_at` (expires_at), `idx_user_sessions_user_id` (user_id)
+
+##### `otp_verification`
+
+The current registration/login OTP for a user (one active row per user).
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `user_id` | uuid | no |  | FK → `users`, UQ | Owning user |
+| `otp_hash` | varchar(255) | no |  |  | Hash of the 6-digit OTP |
+| `expires_at` | timestamptz | no |  |  | Expiry (5 minutes) |
+| `attempts` | integer | no | `0` |  | Wrong guesses so far |
+| `max_attempts` | integer | no |  |  | Allowed guesses (5) |
+| `verified` | boolean | no | `false` |  | True once verified |
+| `verified_at` | timestamptz | yes |  |  | When verified |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+
+Constraints & indexes: indexes: `idx_otp_expires_at` (expires_at), `idx_otp_user_id` (user_id)
+
+##### `pin_reset_tokens`
+
+The current forgot-PIN code for a user (one active row per user).
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `user_id` | uuid | no |  | FK → `users`, UQ | Owning user |
+| `otp_hash` | varchar(255) | no |  |  | Hash of the 6-digit reset code |
+| `expires_at` | timestamptz | no |  |  | Expiry (5 minutes) |
+| `attempts` | integer | no | `0` |  | Wrong guesses so far |
+| `max_attempts` | integer | no |  |  | Allowed guesses (5) |
+| `used` | boolean | no | `false` |  | True once consumed |
+| `used_at` | timestamptz | yes |  |  | When consumed |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+
+Constraints & indexes: indexes: `idx_pin_reset_tokens_user_id` (user_id), `idx_pin_reset_tokens_expires_at` (expires_at)
 
 #### Parties
 
-- **`customers`**: `id` uuid, `user_id` uuid → `users`, `status` varchar(20), `created_at` timestamptz, `updated_at` timestamptz, `reference` uuid, `first_name` varchar(100), `middle_name` varchar(100) (null), `last_name` varchar(100), `email` varchar(255), `phone_number` varchar(30), `nida_number` varchar(30), `date_of_birth` date, `address` varchar(255)
-- **`agents`**: `id` uuid, `user_id` uuid → `users`, `agent_number` varchar(30), `created_at` timestamptz, `update_at` timestamptz, `gender` varchar(10), `date_of_birth` date, `region_id` uuid → `regions`, `district_id` uuid → `districts`, `reference` uuid, `first_name` varchar(100), `middle_name` varchar(100) (null), `last_name` varchar(100), `email` varchar(255), `phone_number` varchar(30), `business_name` varchar(150), `tin_number` varchar(30), `agent_status` varchar(20), `created_by` uuid → `users` (null)
-- **`staff`**: `id` uuid, `reference` uuid, `user_id` uuid → `users`, `staff_no` varchar(30), `job_title` varchar(100), `first_name` varchar(100), `middle_name` varchar(100) (null), `last_name` varchar(100), `email` varchar(255), `phone_number` varchar(30), `created_by` uuid → `users` (null), `status` varchar(20), `created_at` timestamptz, `updated_at` timestamptz
+##### `customers`
+
+Customer profile and KYC data for a CUSTOMER user.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `user_id` | uuid | no |  | FK → `users`, UQ | Owning user |
+| `status` | varchar(20) | no |  |  | `CustomerStatus` |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+| `updated_at` | timestamptz | no |  |  | When the row was last changed |
+| `reference` | uuid | no | `gen_random_uuid()` | UQ | Public UUID safe to expose in APIs instead of `id` |
+| `first_name` | varchar(100) | no |  |  | First name |
+| `middle_name` | varchar(100) | yes |  |  | Middle name |
+| `last_name` | varchar(100) | no |  |  | Last name |
+| `email` | varchar(255) | no |  |  | Email address |
+| `phone_number` | varchar(30) | no |  |  | Phone number in normalised international form |
+| `nida_number` | varchar(30) | no |  |  | Tanzanian national ID (NIDA) number |
+| `date_of_birth` | date | no |  |  | Date of birth |
+| `address` | varchar(255) | no |  |  | Residential address |
+
+##### `agents`
+
+Agent business profile, KYC and location for an AGENT user.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `user_id` | uuid | no |  | FK → `users`, UQ | Owning user |
+| `agent_number` | varchar(30) | no |  | UQ | Unique agent code shown to customers |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+| `update_at` | timestamptz | no |  |  | When the row was last changed (column name lacks the "d"; see findings) |
+| `gender` | varchar(10) | no |  |  | `Gender` (CHECK constrained) |
+| `date_of_birth` | date | no |  |  | Date of birth |
+| `region_id` | uuid | no |  | FK → `regions` | Region the agent operates in |
+| `district_id` | uuid | no |  | FK → `districts` | District the agent operates in |
+| `reference` | uuid | no | `gen_random_uuid()` | UQ | Public UUID safe to expose in APIs instead of `id` |
+| `first_name` | varchar(100) | no |  |  | First name |
+| `middle_name` | varchar(100) | yes |  |  | Middle name |
+| `last_name` | varchar(100) | no |  |  | Last name |
+| `email` | varchar(255) | no |  |  | Email address |
+| `phone_number` | varchar(30) | no |  |  | Phone number in normalised international form |
+| `business_name` | varchar(150) | no |  |  | Registered business name |
+| `tin_number` | varchar(30) | no |  |  | Tax identification number (TIN) |
+| `agent_status` | varchar(20) | no | `'ACTIVE'` |  | `AgentStatus`: operational standing, separate from login status |
+| `created_by` | uuid | yes |  | FK → `users` | User who created this row |
+
+Constraints & indexes: `CHECK (((gender) = ANY (['MALE', 'FEMALE', 'OTHER'][]))`
+
+##### `staff`
+
+Back-office profile for ADMIN/finance/support users.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `reference` | uuid | no | `gen_random_uuid()` | UQ | Public UUID safe to expose in APIs instead of `id` |
+| `user_id` | uuid | no |  | FK → `users`, UQ | Owning user |
+| `staff_no` | varchar(30) | no |  | UQ | Unique staff number |
+| `job_title` | varchar(100) | no |  |  | e.g. “System Administrator” |
+| `first_name` | varchar(100) | no |  |  | First name |
+| `middle_name` | varchar(100) | yes |  |  | Middle name |
+| `last_name` | varchar(100) | no |  |  | Last name |
+| `email` | varchar(255) | no |  |  | Email address |
+| `phone_number` | varchar(30) | no |  |  | Phone number in normalised international form |
+| `created_by` | uuid | yes |  | FK → `users` | User who created this row |
+| `status` | varchar(20) | no | `'ACTIVE'` |  | `StaffStatus` |
+| `created_at` | timestamptz | no | `now()` |  | When the row was created |
+| `updated_at` | timestamptz | no | `now()` |  | When the row was last changed |
 
 #### Money & ledger
 
-- **`wallets`**: `id` uuid, `currency` varchar(3), `status` varchar(20), `created_at` timestamptz, `updated_at` timestamptz, `user_id` uuid → `users`, `wallet_type` varchar(30), `account_number` varchar(30), `balance` numeric(19,2), `version` bigint, `reference` uuid, `account_name` varchar(150). *4 company wallets seeded.*
-- **`transactions`**: `id` uuid, `reference_no` varchar(60), `sender_wallet_id` uuid → `wallets`, `receiver_wallet_id` uuid → `wallets`, `amount` numeric(19,2), `fee` numeric(19,2), `commission` numeric(19,2), `transaction_type` varchar(30), `status` varchar(20), `created_at` timestamptz
-- **`transaction_journal`**: `id` uuid, `reference_number` varchar(60), `transaction_type` varchar(30), `description` varchar(255), `created_by` uuid → `users`, `created_at` timestamptz
-- **`transaction_journal_line`**: `id` uuid, `journal_id` uuid → `transaction_journal`, `entry_type` varchar(10), `amount` numeric(19,2), `wallet_id` uuid → `wallets`
-- **`tariffs`**: `id` uuid, `reference` uuid, `transaction_type` varchar(30), `min_amount` numeric(19,2), `max_amount` numeric(19,2), `fee` numeric(19,2), `agent_commission` numeric(19,2), `active` boolean, `created_at` timestamptz. *2 seeded: CASH_IN, CASH_OUT.*
-- **`treasury_requests`**: `id` uuid, `agent_id` uuid → `agents`, `amount` numeric(19,2), `reason` varchar(500), `status` varchar(20), `decided_by` uuid → `users` (null), `decision_note` varchar(500) (null), `decided_at` timestamptz (null), `created_at` timestamptz, `updated_at` timestamptz, `request_ref` varchar(20), `request_type` varchar(20), `external_reference` varchar(100) (null)
+##### `wallets`
+
+Every balance in the system: customer, agent float and commission, and four singleton company wallets. Balance changes only with journal lines.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `currency` | varchar(3) | no |  |  | ISO currency code (TZS) |
+| `status` | varchar(20) | no |  |  | `WalletStatus` |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+| `updated_at` | timestamptz | no |  |  | When the row was last changed |
+| `user_id` | uuid | no |  | FK → `users` | Owning user |
+| `wallet_type` | varchar(30) | no |  |  | `WalletType` |
+| `account_number` | varchar(30) | no |  | UQ | Unique account number (customer: phone number; agent: generated code) |
+| `balance` | numeric(19,2) | no |  |  | Current balance; CHECK ≥ 0 |
+| `version` | bigint | no | `0` |  | Optimistic-lock version (JPA `@Version`) |
+| `reference` | uuid | no | `gen_random_uuid()` | UQ | Public UUID safe to expose in APIs instead of `id` |
+| `account_name` | varchar(150) | no |  |  | Display name, e.g. customer full name or “Company Revenue” |
+
+Constraints & indexes: `CHECK ((balance >= (0)))`; indexes: `idx_wallets_wallet_type` (wallet_type); partial unique index: one wallet each of COMPANY_MASTER_ACCOUNT, REVENUE, ESCROW_BANK, COMMISSION
+
+##### `transactions`
+
+Customer/agent-facing record of a money movement (what a receipt or history shows).
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `reference_no` | varchar(60) | no |  | UQ | Receipt reference `TXN-yyyyMMdd-XXXXXXXX` |
+| `sender_wallet_id` | uuid | no |  | FK → `wallets` | Wallet debited |
+| `receiver_wallet_id` | uuid | no |  | FK → `wallets` | Wallet credited |
+| `amount` | numeric(19,2) | no |  |  | Principal amount |
+| `fee` | numeric(19,2) | no | `0` |  | Fee charged to the customer |
+| `commission` | numeric(19,2) | no | `0` |  | Commission paid to the agent |
+| `transaction_type` | varchar(30) | no |  |  | `TransactionType` stored as text |
+| `status` | varchar(20) | no |  |  | `TransactionStatus` stored as text |
+| `created_at` | timestamptz | no | `now()` |  | When the row was created |
+
+Constraints & indexes: indexes: `idx_transactions_status_created_at` (status, created_at), `idx_transactions_receiver_wallet` (receiver_wallet_id), `idx_transactions_sender_wallet` (sender_wallet_id)
+
+##### `transaction_journal`
+
+Double-entry journal header: one per posting. The ledger of truth.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `reference_number` | varchar(60) | no |  | UQ | Journal reference `<TYPE>-yyyyMMdd-XXXXXXXX` |
+| `transaction_type` | varchar(30) | no |  |  | `LedgerTransactionType` |
+| `description` | varchar(255) | no |  |  | Human-readable description of the posting |
+| `created_by` | uuid | no |  | FK → `users` | User who triggered the posting |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+
+##### `transaction_journal_line`
+
+Debit/credit lines of a journal; debits equal credits per journal.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `journal_id` | uuid | no |  | FK → `transaction_journal` | Parent journal |
+| `entry_type` | varchar(10) | no |  |  | `EntryType`: DEBIT or CREDIT |
+| `amount` | numeric(19,2) | no |  |  | Line amount (positive) |
+| `wallet_id` | uuid | no |  | FK → `wallets` | Wallet this line moves |
+
+##### `tariffs`
+
+Fee and agent-commission bands per transaction type and amount range.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `reference` | uuid | no | `gen_random_uuid()` | UQ | Public UUID safe to expose in APIs instead of `id` |
+| `transaction_type` | varchar(30) | no |  |  | Transaction type the band applies to |
+| `min_amount` | numeric(19,2) | no |  |  | Band lower bound (inclusive) |
+| `max_amount` | numeric(19,2) | no |  |  | Band upper bound; CHECK ≥ min_amount |
+| `fee` | numeric(19,2) | no |  |  | Fee charged in this band |
+| `agent_commission` | numeric(19,2) | no |  |  | Commission paid to the agent in this band |
+| `active` | boolean | no | `true` |  | Only active bands are used |
+| `created_at` | timestamptz | no | `now()` |  | When the row was created |
+
+Constraints & indexes: `CHECK ((max_amount >= min_amount))`
+
+##### `treasury_requests`
+
+Agent float top-up or withdrawal requests and the staff decision on them.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no |  | PK | Primary key (UUID) |
+| `agent_id` | uuid | no |  | FK → `agents` | Requesting agent |
+| `amount` | numeric(19,2) | no |  |  | Requested amount; CHECK > 0 |
+| `reason` | varchar(500) | no |  |  | Why the agent is asking |
+| `status` | varchar(20) | no |  |  | `RequestStatus` (CHECK constrained) |
+| `decided_by` | uuid | yes |  | FK → `users` | Staff user who approved or rejected |
+| `decision_note` | varchar(500) | yes |  |  | Reason given with the decision |
+| `decided_at` | timestamptz | yes |  |  | When decided |
+| `created_at` | timestamptz | no |  |  | When the row was created |
+| `updated_at` | timestamptz | no |  |  | When the row was last changed |
+| `request_ref` | varchar(20) | no |  | UQ | Short public reference |
+| `request_type` | varchar(20) | no |  |  | `RequestType` (CHECK constrained) |
+| `external_reference` | varchar(100) | yes |  |  | Outside evidence, e.g. bank deposit slip number |
+
+Constraints & indexes: `CHECK ((amount > (0)))`; `CHECK (((status) = ANY (['PENDING', 'APPROVED', 'REJECTED'][]))`; `CHECK (((request_type) = ANY (['TOPUP', 'WITHDRAWAL'][]))`; indexes: `idx_treasury_requests_agent_id` (agent_id), `idx_treasury_requests_status` (status)
 
 #### Geography
 
-- **`regions`**: `id` uuid, `external_id` varchar(100), `name` varchar(100), `slug` varchar(100). *31 seeded.*
-- **`districts`**: `id` uuid, `external_id` varchar(100), `name` varchar(100), `slug` varchar(100), `region_id` uuid → `regions`. *170 seeded.*
+##### `regions`
 
-**Enums the code relies on**
+Tanzanian regions (seeded).
 
-| Enum | Values |
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no | `gen_random_uuid()` | PK | Primary key (UUID) |
+| `external_id` | varchar(100) | no |  | UQ | ID from the source dataset |
+| `name` | varchar(100) | no |  |  | Region name |
+| `slug` | varchar(100) | no |  | UQ | URL-safe name |
+
+##### `districts`
+
+Districts within a region (seeded). Agents are placed in one.
+
+| Column | Type | Null | Default | Key | Description |
+|---|---|---|---|---|---|
+| `id` | uuid | no | `gen_random_uuid()` | PK | Primary key (UUID) |
+| `external_id` | varchar(100) | no |  | UQ | ID from the source dataset |
+| `name` | varchar(100) | no |  |  | District name (unique within region) |
+| `slug` | varchar(100) | no |  |  | URL-safe name |
+| `region_id` | uuid | no |  | FK → `regions` | Region it belongs to |
+
+Constraints & indexes: unique (region_id, name); indexes: `idx_district_region_id` (region_id)
+
+#### Enumerations
+
+| Enum | Values | Stored in |
+|---|---|---|
+| `UserStatus` | AWAITING_PIN, PIN_CHANGE_REQUIRED, ACTIVE, SUSPENDED, DISABLED, BLOCKED, CLOSED | `users.status` |
+| `CustomerStatus` | PENDING, ACTIVE, SUSPENDED | `customers.status` |
+| `AgentStatus` | ACTIVE, SUSPENDED, DEACTIVATED | `agents.agent_status` |
+| `StaffStatus` | ACTIVE, SUSPENDED, DISABLED | `staff.status` |
+| `Gender` | MALE, FEMALE, OTHER | `agents.gender` |
+| `WalletType` | COMPANY_MASTER_ACCOUNT, REVENUE, ESCROW_BANK, COMMISSION, AGENT_FLOAT, AGENT_COMMISSION, CUSTOMER_MAIN | `wallets.wallet_type` |
+| `WalletStatus` | ACTIVE, SUSPENDED, BLOCKED, CLOSED | `wallets.status` |
+| `TransactionType` | CASH_IN, CASH_OUT, SERVICE_FEE, SERVICE_COMMISSION (+ TRANSFER, Phase 1) | `transactions.transaction_type`, `tariffs.transaction_type` |
+| `TransactionStatus` | PENDING, COMPLETED, FAILED | `transactions.status` |
+| `LedgerTransactionType` | MINT_FLOAT, TOPUP_FLOAT, AGENT_WITHDRAW, TOPUP_COMMISSION, CASH_IN, CASH_OUT (+ TRANSFER, Phase 1) | `transaction_journal.transaction_type` |
+| `EntryType` | DEBIT, CREDIT | `transaction_journal_line.entry_type` |
+| `RequestType` | TOPUP, WITHDRAWAL | `treasury_requests.request_type` |
+| `RequestStatus` | PENDING, APPROVED, REJECTED | `treasury_requests.status` |
+
+#### Reference and seed data
+
+| Table | Seeded by migrations |
 |---|---|
-| `WalletType` | COMPANY_MASTER_ACCOUNT, REVENUE, ESCROW_BANK, COMMISSION, AGENT_FLOAT, AGENT_COMMISSION, CUSTOMER_MAIN |
-| `LedgerTransactionType` | MINT_FLOAT, TOPUP_FLOAT, AGENT_WITHDRAW, TOPUP_COMMISSION, CASH_IN, CASH_OUT (+ TRANSFER in Phase 1) |
-| `TransactionType` | CASH_IN, CASH_OUT, SERVICE_FEE, SERVICE_COMMISSION (+ TRANSFER in Phase 1) |
-| `EntryType` | DEBIT, CREDIT |
-| `AgentStatus` | ACTIVE, SUSPENDED, DEACTIVATED |
+| `roles` | 4: ADMIN, CUSTOMER, AGENT, SYSTEM |
+| `modules` → `permissions` | 10 modules, 36 permissions: AGENT 4, CUSTOMER 3, FINANCE 6, LOAN 4, ROLE 2, SYSTEM 1, TARIFF 3, TRANSACTION 6, USER 3, WALLET 4 |
+| `regions` / `districts` | 31 / 170 |
+| `tariffs` | 2 bands, 1,000 – 100,000,000 TZS: CASH_IN fee 0, commission 200; CASH_OUT fee 300, commission 200 |
+| `wallets` | 4 company wallets owned by the SYSTEM user: Company Master Account, Company Revenue, Company Escrow Bank, Commission pool |
+| `users` / `staff` | First admin created at startup by `DataInitializer` when `APP_INITIAL_ADMIN_ENABLED=true` |
 
-**Schema rules**
+The LOAN module's 4 permissions exist with no loan tables or endpoints. They are kept for now and hidden in the UI (Loans is a non-goal).
+
+#### Schema findings (fix in Phase 0 unless noted)
+
+| # | Finding | Why it matters | Proposed fix |
+|---|---|---|---|
+| 1 | `transaction_journal_line` has no index on `wallet_id` or `journal_id` | Reconciliation and wallet statements scan the whole table | `V48`: index both columns |
+| 2 | Duplicate indexes: `users.phone`, `users.email`, `roles.name`, `permissions.name`, `otp_verification.user_id`, `pin_reset_tokens.user_id` each have a plain index next to a unique one | Extra write cost, no read benefit | Drop the plain duplicates |
+| 3 | No `CHECK (amount > 0)` on `transaction_journal_line` or `transactions`; no `CHECK (fee >= 0, commission >= 0)` | A bug could post a zero or negative line that still balances | Add the checks |
+| 4 | Most status/type columns have no `CHECK` (users, customers, wallets, transactions, journal) | Any string can be stored if code paths bypass the enum | Add `CHECK … IN (…)` matching each enum |
+| 5 | `agents.update_at` (missing "d") while every other table uses `updated_at` | Inconsistent; easy to get wrong in queries | Rename the column and the entity mapping together |
+| 6 | `customers.phone_number` and `email` are not unique, though `users.phone`/`email` are | Profile copy can drift from login identity | Keep `users` as the source of truth; add unique on `customers.phone_number` or derive it |
+| 7 | `tariffs` allows overlapping bands for the same type | `findApplicableTariff` result becomes ambiguous | Enforced in service now; exclusion constraint with tariff management (Phase 3) |
+| 8 | Seed balances from V26 have no journal lines | Reconciliation would show variances on an un-rebuilt database | Rebuild dev DB (decision 3); opening-balance journal for any other environment |
+
+#### Tables to add
+
+```sql
+-- Phase 0: safe retries for money POSTs
+CREATE TABLE idempotency_keys (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       uuid NOT NULL REFERENCES users(id),
+    idem_key      varchar(80) NOT NULL,
+    endpoint      varchar(120) NOT NULL,
+    request_hash  varchar(64) NOT NULL,          -- SHA-256 of the request body
+    status        varchar(20) NOT NULL CHECK (status IN ('IN_PROGRESS','COMPLETED','FAILED')),
+    http_status   integer,
+    response_json jsonb,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, idem_key)
+);
+
+-- Phase 1: saved recipients
+CREATE TABLE beneficiaries (
+    id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_user_id      uuid NOT NULL REFERENCES users(id),
+    wallet_id          uuid NOT NULL REFERENCES wallets(id),
+    nickname           varchar(60),
+    last_used_at       timestamptz,
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (owner_user_id, wallet_id)
+);
+
+-- Phase 3: who did what
+CREATE TABLE audit_logs (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id     uuid REFERENCES users(id),
+    action       varchar(60) NOT NULL,           -- e.g. WALLET_LOCK, TARIFF_UPDATE
+    entity_type  varchar(60) NOT NULL,
+    entity_id    uuid,
+    before_json  jsonb,
+    after_json   jsonb,
+    reason       varchar(500),
+    ip_address   varchar(45),
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_audit_logs_entity ON audit_logs (entity_type, entity_id);
+CREATE INDEX idx_audit_logs_actor_created ON audit_logs (actor_id, created_at);
+```
+
+Later: `devices` (binding, push token; Phase 5), `notifications` (Phase 4), `savings_vaults`, `payment_requests` and `billers` (Phase 4, each with its own spec).
+
+#### Schema rules
 
 - Never edit or rename a merged migration. The next file is `V48`, and each file makes one change.
-- Hibernate runs with `ddl-auto=validate`: a PR that adds a migration also updates the matching entity.
-- Money is `numeric(19,2)`, never floating point. Balances change only in the same DB transaction as their journal lines.
-- `transactions.transaction_type` and `status` are plain `varchar`. Queries compare against enum `.name()`.
-- New tables, in order: `idempotency_keys` (Phase 0), `beneficiaries` (Phase 1), `audit_logs` (Phase 3), then `devices` and `notifications` (Phases 4–5).
+- A PR that adds a migration also updates the matching entity (`ddl-auto=validate` fails otherwise).
+- Balances change only in the same DB transaction as their journal lines. Reversals are new opposite journals; nothing is updated or deleted.
+- New status/type columns get a `CHECK` matching their enum. New money columns get sign checks.
+- Every new foreign key gets an index.
 
 ### Project structure
 
