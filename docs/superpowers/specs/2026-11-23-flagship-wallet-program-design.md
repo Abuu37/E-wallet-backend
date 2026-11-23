@@ -2,7 +2,7 @@
 
 Status: **draft for review** (builder-checked). Four questions in the last section are still open and decide the order of work. Everything marked *(my call)* is a proposal you can overturn.
 
-Companion: the visual plan (personas, roadmap, data map, user stories, journeys, code audit) lives on the Design canvas "e-Wallet Product Plan". This document is the written design that implementation plans are built from; the canvas is the picture of it.
+All technical design (architecture, database, diagrams, Docker, Git, CI) lives in this one document; diagrams are Mermaid and render on GitHub and in IntelliJ. Companion: the visual plan (personas, roadmap, data map, user stories, journeys, code audit) lives on the Design canvas "e-Wallet Product Plan". This document is the written design that implementation plans are built from; the canvas is the picture of it.
 
 ## Intent and why
 
@@ -76,6 +76,36 @@ Three orderings were considered. All end in the same place; they differ in what 
 
 **Picked:** *pending your choice* (Open question 2).
 
+### Delivery timeline (approach C, indicative)
+
+Assumes a start on Monday 30 Nov 2026 and a small team. Dates move once the approach and team size are confirmed.
+
+```mermaid
+gantt
+    title Flagship e-wallet: indicative timeline
+    dateFormat YYYY-MM-DD
+    axisFormat %d %b
+    section Phase 0 Connect and harden
+    Withdrawal without PIN sharing   :p0a, 2026-11-30, 5d
+    Idempotency and lock order       :p0b, 2026-11-30, 5d
+    TransactionService tests         :p0c, after p0a, 4d
+    Drift fixes and API client       :p0d, 2026-11-30, 4d
+    Dashboards on real data          :p0e, after p0d, 10d
+    Docker, CI, OpenAPI              :p0f, 2026-12-07, 5d
+    section Phase 1 Customer money
+    Lookup, quote, transfer          :p1a, after p0c, 8d
+    History, receipts, beneficiaries :p1b, after p1a, 7d
+    Customer web screens             :p1c, after p1a, 12d
+    section Phase 2 Agent experience
+    Agent portal                     :p2, after p1b, 15d
+    section Phase 3 Back office trust
+    Maker-checker, tariffs, audit    :p3a, after p2, 12d
+    Reconciliation, customer 360     :p3b, after p2, 12d
+    section Phase 4-5
+    Delight features                 :p4, after p3a, 20d
+    Mobile app                       :p5, after p4, 30d
+```
+
 ## Design
 
 ### Phase 0 — Connect and harden
@@ -83,7 +113,57 @@ Three orderings were considered. All end in the same place; they differ in what 
 **0.1 Withdrawal without PIN sharing.** Replace `customerPin` in the agent's cash-out request.
 Proposed model *(needs your pick, Open question 3)*: **customer-initiated withdrawal** — the customer enters the agent's float account number and the amount in their own app, sees the fee, and confirms with their own PIN. The agent's screen shows the confirmed withdrawal (polling) and the agent pays cash. Posting legs stay exactly as today's `cashOut`. Alternative: agent-initiated request that the customer approves in-app within 2 minutes (better at the counter, needs a pending state and expiry).
 
+Proposed customer-initiated withdrawal:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Customer (own phone)
+    actor A as Agent
+    participant API as Backend
+    participant L as LedgerService
+    A->>C: Tells till number (agent float account)
+    C->>API: GET /tariffs/quote?type=CASH_OUT&amount=
+    API-->>C: fee and total
+    C->>API: POST /transactions/withdraw (agent account, amount, own PIN, Idempotency-Key)
+    API->>API: lock wallets in id order, check status, balance, limits
+    API->>L: postJournal(CASH_OUT)
+    L-->>API: balanced journal saved
+    API-->>C: receipt TXN-…
+    loop every 5 s
+        A->>API: GET /agent/withdrawals?since=
+    end
+    API-->>A: confirmed withdrawal with reference
+    A->>C: Pays cash, both see the same reference
+```
+
+Alternative (agent-initiated, customer approves):
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING_APPROVAL: agent creates request
+    PENDING_APPROVAL --> COMPLETED: customer approves with own PIN
+    PENDING_APPROVAL --> REJECTED: customer declines
+    PENDING_APPROVAL --> EXPIRED: no answer in 2 minutes
+    COMPLETED --> [*]
+    REJECTED --> [*]
+    EXPIRED --> [*]
+```
+
 **0.2 Idempotency.** Every money `POST` (`cash-in`, `cash-out`/withdraw, transfer, treasury mint/top-up/approve) requires an `Idempotency-Key` header. New table `idempotency_keys(user_id, key, endpoint, request_hash, response_json, status, created_at)` with a unique `(user_id, key)`. Same key + same body → stored response; same key + different body → 409.
+
+Request handling:
+
+```mermaid
+flowchart TD
+    R[Money POST with Idempotency-Key] --> F{Key seen for this user?}
+    F -- no --> I[Insert key as IN_PROGRESS] --> P[Run the posting] --> S[Store response, mark COMPLETED] --> OK[Return response]
+    F -- yes --> H{Same request hash?}
+    H -- no --> E409[409 Conflict]
+    H -- yes --> ST{Status}
+    ST -- COMPLETED --> RS[Return stored response]
+    ST -- IN_PROGRESS --> E425[409 still processing, retry later]
+```
 
 **0.3 Lock ordering.** Wallets locked in one posting are fetched in ascending `id` order *(my call)* so two concurrent postings over the same wallets cannot deadlock.
 
@@ -106,6 +186,31 @@ Proposed model *(needs your pick, Open question 3)*: **customer-initiated withdr
 - **Receipts** *(my call)*: shared as an image or PDF generated in the app; no public verification link (that would be an unauthenticated endpoint and a separate security decision).
 - Saved recipients (`beneficiaries`) *(my call to include here; cheap and high-delight)*.
 
+Send-money flow:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor S as Sender
+    participant UI as Web app
+    participant API as Backend
+    participant DB as PostgreSQL
+    S->>UI: Enter phone number
+    UI->>API: GET /wallets/lookup?phone=
+    API-->>UI: "Amina W.", can receive
+    S->>UI: Enter amount
+    UI->>API: GET /tariffs/quote?type=TRANSFER&amount=
+    API-->>UI: fee, total
+    S->>UI: Confirm with PIN
+    UI->>API: POST /transactions/transfer + Idempotency-Key
+    API->>DB: lock sender and receiver wallets (id order)
+    API->>API: check PIN, statuses, balance, limits
+    API->>DB: journal: sender DR amount+fee, receiver CR amount, revenue CR fee
+    API->>DB: UPDATE wallets, INSERT transactions
+    API-->>UI: receipt
+    UI-->>S: Success screen, share receipt
+```
+
 ### Phase 2 — Agent experience
 
 Agent portal on the existing endpoints: cash-in, confirmed-withdrawal queue, float balance with low-float alert, float request with status timeline, daily summary and commission. Agent locator for customers by region → district.
@@ -117,6 +222,18 @@ Agent portal on the existing endpoints: cash-in, confirmed-withdrawal queue, flo
 - `audit_logs` for every staff action and status change (who, what, before/after, when).
 - Daily reconciliation job: per wallet, sum of journal lines = balance; variances surface on the dashboard. V26 seeded balances without journals; because the dev database is rebuilt (Decision 3) and all money enters via mint journals, this holds from a fresh database. Any non-rebuilt environment needs an opening-balance journal migration first.
 - Customer 360 for support; lock/unlock wallet with reason.
+
+Issuance with two approvers (mint and commission top-up):
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: staff A requests mint or commission top-up
+    PENDING --> APPROVED: staff B approves (B ≠ A)
+    PENDING --> REJECTED: staff B rejects with reason
+    APPROVED --> POSTED: journal posted, wallets credited
+    POSTED --> [*]
+    REJECTED --> [*]
+```
 
 ### Phase 4 — Delight
 
@@ -133,6 +250,35 @@ Mobile client on the same `/api/v1`; adds only `devices` (binding, push token) a
 - Every UI flow works at phone width and by keyboard; copy is ready for English and Swahili.
 
 ## Engineering foundations
+
+### System architecture
+
+```mermaid
+flowchart LR
+    subgraph Clients
+        CW[Customer web]
+        AP[Agent portal]
+        SC[Staff console]
+        MA[Mobile app, Phase 5]
+    end
+    subgraph Edge
+        NG[nginx: static files + /api proxy]
+    end
+    subgraph API[Spring Boot /api/v1]
+        SEC[Security: JWT, rate limits, permissions]
+        ID[Identity: auth, OTP, PIN, sessions, RBAC]
+        MON[Money: wallets, transactions, ledger, tariffs, treasury]
+        OPS[Ops: dashboards, audit, reconciliation]
+    end
+    DB[(PostgreSQL e_walletDB)]
+    MAIL[SMTP / SMS for OTP]
+    CW & AP & SC --> NG --> SEC
+    MA --> SEC
+    SEC --> ID & MON & OPS
+    ID & MON & OPS --> DB
+    ID --> MAIL
+```
+
 
 ### Database (`e_walletDB`)
 
@@ -160,7 +306,7 @@ Everything here comes from the real schema. On 23 Nov every Flyway migration fro
 
 #### Entity-relationship diagram (ERD)
 
-Renders on GitHub and in IntelliJ's Markdown preview (static copy: `assets/2026-11-23-erd.png`). `PK` is a primary key, `FK` a foreign key, `UK` a unique column.
+Renders on GitHub and in IntelliJ's Markdown preview. `PK` is a primary key, `FK` a foreign key, `UK` a unique column.
 
 ```mermaid
 erDiagram
@@ -1059,6 +1205,18 @@ Neither repo has Docker today. The proposal is one Compose stack for local and s
 | `db` | postgres:16-alpine | 5432, volume `pgdata` | `e_walletDB`, health-checked before the backend starts |
 | `mail` (dev only) | axllent/mailpit | SMTP 1025, UI 8025 | Catches OTP emails locally |
 
+How the containers connect:
+
+```mermaid
+flowchart LR
+    B[Browser] -->|:80| FE[frontend<br/>nginx:alpine]
+    FE -->|/api/ → :8080| BE[backend<br/>eclipse-temurin:21-jre]
+    BE -->|:5432| DB[(db<br/>postgres:16-alpine<br/>volume pgdata)]
+    BE -->|SMTP :1025| MP[mail<br/>mailpit, dev only]
+    DEV[Developer] -->|:8025| MP
+    DB -. healthcheck .-> BE
+```
+
 `docker-compose.yml`:
 
 ```yaml
@@ -1173,7 +1331,40 @@ Today both repos commit straight to `main` with free-form messages and no CI.
 - **Releases:** tag `main` as `v0.x.y` when a phase ships. Docker images get the same tag, and release notes are generated from commit types.
 - **This design** is committed on `docs/flagship-program-design`. Pushing needs the Claude GitHub App on both repos.
 
+What the history looks like:
+
+```mermaid
+gitGraph
+    commit id: "v0.1.0"
+    branch feature/US-202-send-money
+    checkout feature/US-202-send-money
+    commit id: "test: transfer limits"
+    commit id: "feat: transfer endpoint"
+    checkout main
+    branch fix/cash-out-pin
+    checkout fix/cash-out-pin
+    commit id: "fix: customer-initiated withdraw"
+    checkout main
+    merge fix/cash-out-pin id: "squash fix"
+    merge feature/US-202-send-money id: "squash feat"
+    commit id: "v0.2.0" tag: "v0.2.0"
+```
+
 ### CI (GitHub Actions)
+
+```mermaid
+flowchart LR
+    PR[Pull request] --> BK & FK
+    subgraph BK[Backend job]
+        B1[Checkout] --> B2[Java 21 + Maven cache] --> B3[Postgres service] --> B4[mvnw verify: tests + Flyway on clean DB]
+    end
+    subgraph FK[Frontend job]
+        F1[Checkout] --> F2[Node 22 + npm ci] --> F3[lint] --> F4[tsc --noEmit] --> F5[build]
+    end
+    B4 & F5 --> G{All green?}
+    G -- yes --> M[Review, then squash merge to main]
+    G -- no --> X[Fix on the branch]
+```
 
 Backend `.github/workflows/ci.yml`:
 
