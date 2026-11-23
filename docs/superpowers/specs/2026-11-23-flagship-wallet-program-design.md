@@ -132,6 +132,298 @@ Mobile client on the same `/api/v1`; adds only `devices` (binding, push token) a
 - Every endpoint has a permission mapped to a module; every staff action writes an audit entry (from Phase 3).
 - Every UI flow works at phone width and by keyboard; copy is ready for English and Swahili.
 
+## Engineering foundations
+
+### Database (`e_walletDB`)
+
+Generated on 23 Nov by replaying every Flyway migration from `E-wallet-backend@84f2bc1` into PostgreSQL 16. The result is 20 tables: the 19 below plus `flyway_schema_history`, which holds 46 migrations numbered V1–V47 (there is no V12). There are 175 columns and 23 foreign keys. Every table has a UUID `id` primary key except `role_permissions`, whose key is `(role_id, permission_id)`. Arrows mark foreign keys; `(null)` marks nullable columns.
+
+#### Identity & access
+
+- **`users`**: `id` uuid, `email` varchar(255), `phone` varchar(30), `pin_hash` varchar(255) (null), `status` varchar(30), `created_at` timestamptz, `updated_at` timestamptz, `reference` uuid, `username` varchar(100), `last_login_at` timestamptz (null), `role_id` uuid → `roles`
+- **`roles`**: `id` uuid, `name` varchar(50), `description` varchar(255) (null), `created_at` timestamptz, `updated_at` timestamptz. *4 seeded: ADMIN, CUSTOMER, AGENT, SYSTEM.*
+- **`role_permissions`**: `role_id` uuid → `roles`, `permission_id` uuid → `permissions`
+- **`permissions`**: `id` uuid, `name` varchar(255), `description` varchar(255) (null), `created_at` timestamptz, `updated_at` timestamptz, `module_reference` uuid → `modules`. *36 seeded.*
+- **`modules`**: `id` uuid, `reference` uuid, `name` varchar(50), `description` varchar(255), `created_at` timestamptz. *10 seeded.*
+- **`user_sessions`**: `id` uuid, `user_id` uuid → `users`, `refresh_token_hash` varchar(255), `expires_at` timestamptz, `revoked` boolean, `created_at` timestamptz, `revoked_at` timestamptz (null)
+- **`otp_verification`**: `id` uuid, `user_id` uuid → `users`, `otp_hash` varchar(255), `expires_at` timestamptz, `attempts` integer, `max_attempts` integer, `verified` boolean, `verified_at` timestamptz (null), `created_at` timestamptz
+- **`pin_reset_tokens`**: `id` uuid, `user_id` uuid → `users`, `otp_hash` varchar(255), `expires_at` timestamptz, `attempts` integer, `max_attempts` integer, `used` boolean, `used_at` timestamptz (null), `created_at` timestamptz
+
+#### Parties
+
+- **`customers`**: `id` uuid, `user_id` uuid → `users`, `status` varchar(20), `created_at` timestamptz, `updated_at` timestamptz, `reference` uuid, `first_name` varchar(100), `middle_name` varchar(100) (null), `last_name` varchar(100), `email` varchar(255), `phone_number` varchar(30), `nida_number` varchar(30), `date_of_birth` date, `address` varchar(255)
+- **`agents`**: `id` uuid, `user_id` uuid → `users`, `agent_number` varchar(30), `created_at` timestamptz, `update_at` timestamptz, `gender` varchar(10), `date_of_birth` date, `region_id` uuid → `regions`, `district_id` uuid → `districts`, `reference` uuid, `first_name` varchar(100), `middle_name` varchar(100) (null), `last_name` varchar(100), `email` varchar(255), `phone_number` varchar(30), `business_name` varchar(150), `tin_number` varchar(30), `agent_status` varchar(20), `created_by` uuid → `users` (null)
+- **`staff`**: `id` uuid, `reference` uuid, `user_id` uuid → `users`, `staff_no` varchar(30), `job_title` varchar(100), `first_name` varchar(100), `middle_name` varchar(100) (null), `last_name` varchar(100), `email` varchar(255), `phone_number` varchar(30), `created_by` uuid → `users` (null), `status` varchar(20), `created_at` timestamptz, `updated_at` timestamptz
+
+#### Money & ledger
+
+- **`wallets`**: `id` uuid, `currency` varchar(3), `status` varchar(20), `created_at` timestamptz, `updated_at` timestamptz, `user_id` uuid → `users`, `wallet_type` varchar(30), `account_number` varchar(30), `balance` numeric(19,2), `version` bigint, `reference` uuid, `account_name` varchar(150). *4 company wallets seeded.*
+- **`transactions`**: `id` uuid, `reference_no` varchar(60), `sender_wallet_id` uuid → `wallets`, `receiver_wallet_id` uuid → `wallets`, `amount` numeric(19,2), `fee` numeric(19,2), `commission` numeric(19,2), `transaction_type` varchar(30), `status` varchar(20), `created_at` timestamptz
+- **`transaction_journal`**: `id` uuid, `reference_number` varchar(60), `transaction_type` varchar(30), `description` varchar(255), `created_by` uuid → `users`, `created_at` timestamptz
+- **`transaction_journal_line`**: `id` uuid, `journal_id` uuid → `transaction_journal`, `entry_type` varchar(10), `amount` numeric(19,2), `wallet_id` uuid → `wallets`
+- **`tariffs`**: `id` uuid, `reference` uuid, `transaction_type` varchar(30), `min_amount` numeric(19,2), `max_amount` numeric(19,2), `fee` numeric(19,2), `agent_commission` numeric(19,2), `active` boolean, `created_at` timestamptz. *2 seeded: CASH_IN, CASH_OUT.*
+- **`treasury_requests`**: `id` uuid, `agent_id` uuid → `agents`, `amount` numeric(19,2), `reason` varchar(500), `status` varchar(20), `decided_by` uuid → `users` (null), `decision_note` varchar(500) (null), `decided_at` timestamptz (null), `created_at` timestamptz, `updated_at` timestamptz, `request_ref` varchar(20), `request_type` varchar(20), `external_reference` varchar(100) (null)
+
+#### Geography
+
+- **`regions`**: `id` uuid, `external_id` varchar(100), `name` varchar(100), `slug` varchar(100). *31 seeded.*
+- **`districts`**: `id` uuid, `external_id` varchar(100), `name` varchar(100), `slug` varchar(100), `region_id` uuid → `regions`. *170 seeded.*
+
+**Enums the code relies on**
+
+| Enum | Values |
+|---|---|
+| `WalletType` | COMPANY_MASTER_ACCOUNT, REVENUE, ESCROW_BANK, COMMISSION, AGENT_FLOAT, AGENT_COMMISSION, CUSTOMER_MAIN |
+| `LedgerTransactionType` | MINT_FLOAT, TOPUP_FLOAT, AGENT_WITHDRAW, TOPUP_COMMISSION, CASH_IN, CASH_OUT (+ TRANSFER in Phase 1) |
+| `TransactionType` | CASH_IN, CASH_OUT, SERVICE_FEE, SERVICE_COMMISSION (+ TRANSFER in Phase 1) |
+| `EntryType` | DEBIT, CREDIT |
+| `AgentStatus` | ACTIVE, SUSPENDED, DEACTIVATED |
+
+**Schema rules**
+
+- Never edit or rename a merged migration. The next file is `V48`, and each file makes one change.
+- Hibernate runs with `ddl-auto=validate`: a PR that adds a migration also updates the matching entity.
+- Money is `numeric(19,2)`, never floating point. Balances change only in the same DB transaction as their journal lines.
+- `transactions.transaction_type` and `status` are plain `varchar`. Queries compare against enum `.name()`.
+- New tables, in order: `idempotency_keys` (Phase 0), `beneficiaries` (Phase 1), `audit_logs` (Phase 3), then `devices` and `notifications` (Phases 4–5).
+
+### Project structure
+
+Both repos are organised by feature. Lines marked `+` are proposed by this design; `-` marks what to remove.
+
+**Backend**: `Abuu37/E-wallet-backend` · Spring Boot 4.2 · Java 21 · Maven
+
+```
+e-wallet-backend/
+├─ pom.xml                       JPA, Security, Flyway, Mail, JJWT, Bucket4j, libphonenumber
+├─ .env.example                  DB, admin seed, SMTP, JWT_SECRET
+├─ + Dockerfile
+├─ + .github/workflows/ci.yml
+├─ docs/superpowers/{specs,plans}/
+└─ src/main/java/com/application/e_wallet/
+   ├─ auth/  otp/  security/          login, PIN, refresh, OTP, SecurityConfig, JWT, DataInitializer
+   ├─ user/  role/  permission/  module/
+   ├─ customer/  agent/  staff/
+   ├─ wallet/                         7 wallet types, PESSIMISTIC_WRITE locks
+   ├─ ledger/                         LedgerService.postJournal (rejects unbalanced)
+   ├─ transaction/                    cash-in, cash-out (+ transfer, history, receipts)
+   ├─ treasury/                       mint, commission top-up, float requests
+   ├─ tariff/  location/  dashboard/{admin,agent}/
+   ├─ common/                         exceptions, validation, events
+   ├─ + idempotency/                  Idempotency-Key filter + idempotency_keys
+   ├─ + limit/                        LimitService (per-transaction and daily)
+   ├─ + audit/                        audit_logs (Phase 3)
+   └─ + config/OpenApiConfig.java     springdoc
+   src/main/resources/db/migration/   V1…V47, next V48
+   src/test/java/…                    11 classes, 74 tests (+ TransactionServiceTest)
+```
+
+Inside each feature: `controller/ dto/ entity/ repository/ service/`. DTOs are records named `*Request`/`*Response`, errors go through `common/exception/GlobalExceptionHandler`, and every money flow posts through `LedgerService`.
+
+**Frontend**: `Abuu37/E-wallet-frontend` · React 19 · Vite 8 · TypeScript · Tailwind 4
+
+```
+e-wallet-frontend/
+├─ .env  .env.production         VITE_API_BASE_URL only (no secrets)
+├─ + Dockerfile  nginx.conf
+├─ + .github/workflows/ci.yml
+└─ src/
+   ├─ App.tsx                    routes: public, /dashboard (staff/agent), /account (customer)
+   ├─ + lib/api/client.ts        base URL, bearer token, refresh-on-401 once, typed errors
+   ├─ components/                Guard, context, layout, ui
+   ├─ pages/                     Home, services, Fees, FAQ, Contact
+   └─ features/
+      ├─ auth/                   register, login, forgot PIN (live API)
+      ├─ account/                customer overview, withdraw
+      ├─ overview/ transactions/ customers/ ledger/ reconciliation/ fees/ financial/ wallets/ settings/
+      ├─ cashiers/  → rename to agents/
+      ├─ - loans/                hide until it has a backend and spec
+      ├─ - */data.ts             mock data, replaced by per-feature api.ts
+      ├─ + send-money/  + history/  + agent/
+```
+
+Frontend conventions to adopt: all HTTP goes through `src/lib/api`, never `fetch` inside components. Each feature owns `api.ts`, `types.ts` and `pages/`. Convert `.jsx` to `.tsx` as files are touched. Role names match the backend (`ADMIN`, `AGENT`, `CUSTOMER`).
+
+**Mobile (Phase 5)**: a third repo, `E-wallet-mobile`, on the same `/api/v1`, sharing design tokens and validation rules.
+
+### Docker
+
+Neither repo has Docker today. The proposal is one Compose stack for local and staging, and the same images for production.
+
+| Service | Image | Port | Role |
+|---|---|---|---|
+| `frontend` | nginx:alpine (built from node:22-alpine) | 80 | Serves `dist/` and proxies `/api/` to the backend, so there's no CORS in production |
+| `backend` | eclipse-temurin:21-jre (built with maven:3.9-eclipse-temurin-21) | 8080 | Runs Flyway on start, then validates entities |
+| `db` | postgres:16-alpine | 5432, volume `pgdata` | `e_walletDB`, health-checked before the backend starts |
+| `mail` (dev only) | axllent/mailpit | SMTP 1025, UI 8025 | Catches OTP emails locally |
+
+`docker-compose.yml`:
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: e_walletDB
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME}"]
+      interval: 5s
+      retries: 10
+  mail:
+    image: axllent/mailpit
+    ports: ["8025:8025"]
+  backend:
+    build: ./e-wallet-backend
+    env_file: .env
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/e_walletDB
+      APP_MAIL_HOST: mail
+      APP_MAIL_PORT: 1025
+    depends_on:
+      db: { condition: service_healthy }
+    ports: ["8080:8080"]
+  frontend:
+    build: ./e-wallet-frontend
+    depends_on: [backend]
+    ports: ["80:80"]
+volumes:
+  pgdata:
+```
+
+`e-wallet-backend/Dockerfile`:
+
+```dockerfile
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /app
+COPY pom.xml mvnw ./
+COPY .mvn .mvn
+RUN ./mvnw -q dependency:go-offline
+COPY src src
+RUN ./mvnw -q -DskipTests package
+
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+RUN useradd -r wallet
+USER wallet
+COPY --from=build /app/target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+`e-wallet-frontend/Dockerfile` and `nginx.conf`:
+
+```dockerfile
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+ARG VITE_API_BASE_URL=/api/v1
+RUN npm run build
+
+FROM nginx:alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+```
+
+```nginx
+server {
+  listen 80;
+  location /api/ { proxy_pass http://backend:8080; }
+  location / {
+    root /usr/share/nginx/html;
+    try_files $uri /index.html;
+  }
+}
+```
+
+Where the Compose file lives is left to the builder. It can sit in the backend root with the frontend as a sibling folder, or in a small third repo.
+
+### Environments and configuration
+
+| Environment | How it runs |
+|---|---|
+| Local | `docker compose up`, or IntelliJ + `npm run dev` against the `db` container. The database can be dropped and rebuilt at any time. |
+| Staging | Same images, deployed from `main` after CI passes. Seeded test agents and customers. Used for demos. |
+| Production | Same images, tagged releases only. Managed PostgreSQL with daily backups, a real SMTP or SMS gateway, secrets from the host's secret store, HTTPS at the edge. |
+
+| Setting | Notes |
+|---|---|
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | Per environment |
+| `JWT_SECRET` | 256-bit random, different in every environment |
+| `APP_MAIL_HOST/PORT/USER/PASS` | SMTP for OTP; Mailpit locally |
+| `APP_INITIAL_ADMIN_*` | Seeds the first admin; enable only on a fresh database |
+| `VITE_API_BASE_URL` | Frontend build-time; `/api/v1` behind nginx |
+
+The backend ignores `.env` and commits `.env.example`. The frontend commits `.env` and `.env.production`, which hold only the public API URL. No secrets go in either repo.
+
+### Git workflow
+
+Today both repos commit straight to `main` with free-form messages and no CI.
+
+- **`main` is protected and always deployable.** Merges require a pull request and passing CI.
+- **Short-lived branches**, one story or fix each, named `feature/US-202-send-money`, `fix/…`, `docs/…` or `chore/…`. There is no long-lived `develop` branch *(my call; small team)*.
+- **The flow:** branch from `main` → failing test, then code → push and open a PR that links the story and spec → CI green → one review (a person or Claude code review) → squash merge → delete the branch.
+- **Conventional Commits:** `feat(transfer): …`, `fix(cash-out): …`, `test(…)`, `docs: …`, `refactor(…)`, `chore(ci): …`.
+- **Releases:** tag `main` as `v0.x.y` when a phase ships. Docker images get the same tag, and release notes are generated from commit types.
+- **This design** is committed on `docs/flagship-program-design`. Pushing needs the Claude GitHub App on both repos.
+
+### CI (GitHub Actions)
+
+Backend `.github/workflows/ci.yml`:
+
+```yaml
+on: [pull_request, push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_DB: e_walletDB, POSTGRES_PASSWORD: test }
+        ports: ["5432:5432"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21, cache: maven }
+      - run: ./mvnw -B verify
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/e_walletDB
+          DB_USERNAME: postgres
+          DB_PASSWORD: test
+          JWT_SECRET: ci-only-not-a-real-secret
+```
+
+Frontend `.github/workflows/ci.yml`:
+
+```yaml
+on: [pull_request, push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+```
+
+### Testing, observability and security baseline
+
+- **Testing:**
+  - Unit tests use JUnit 5 + Mockito; there are 74 today, and every money rule gets one.
+  - Integration tests use Testcontainers PostgreSQL and assert that journals sum to zero.
+  - Frontend tests use Vitest + Testing Library.
+  - Playwright end-to-end tests cover register, send, cash-in and withdraw.
+- **Observability:** Spring Boot Actuator `/health` for Docker and uptime checks; JSON logs to stdout in containers (today: `logs/app.log`); a request ID echoed in error responses; the daily reconciliation result shown on the admin dashboard.
+- **Security:** containers run as a non-root user; HTTPS everywhere outside local; Bucket4j rate limits (already a dependency) on OTP, login and recipient lookup; Dependabot on both repos; no secrets in git.
+
 ## What's left to the builder
 
 - Exact migration numbering and order after V47.
