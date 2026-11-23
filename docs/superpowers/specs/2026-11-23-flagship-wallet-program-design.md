@@ -1,6 +1,6 @@
 # Flagship e-Wallet Program (Web now, Mobile next) — Design
 
-Status: **draft for review** (builder-checked). Four questions in the last section are still open and decide the order of work. Everything marked *(my call)* is a proposal you can overturn.
+Status: **draft for review** (builder-checked; your answers of 23 Nov recorded). One confirmation is left: approach C (see last section). Everything marked *(my call)* is a proposal you can overturn.
 
 All technical design (architecture, database, diagrams, Docker, Git, CI) lives in this one document; diagrams are Mermaid and render on GitHub and in IntelliJ. Companion: the visual plan (personas, roadmap, data map, user stories, journeys, code audit) lives on the Design canvas "e-Wallet Product Plan". This document is the written design that implementation plans are built from; the canvas is the picture of it.
 
@@ -8,7 +8,7 @@ All technical design (architecture, database, diagrams, Docker, Git, CI) lives i
 
 Turn the existing e-wallet (Spring Boot backend, React frontend, PostgreSQL `e_walletDB`) into a flagship web product for three audiences (customers, agents, back-office staff) that feels instant and certain to use and is provably correct with money. The same backend then serves a mobile app with no rewrite.
 
-**Why:** stated so far as "a mind-blowing e-wallet web application, later a mobile app". *Who it is for first (real users with real money, a client, a pitch, or a portfolio) is not yet stated* — see Open questions. It changes the order of work, not the destination.
+**Why:** a mind-blowing e-wallet that works as a **portfolio project and a pitch demo first**, and later handles real money *(your answer, 23 Nov)*. So the near-term bar is: every flow can be shown end to end, convincingly, with nothing faked on screen, while the money core is already built to a standard that real money won't force a rewrite of. Outside services come from **Plaid in Sandbox** for now (KYC and a bank top-up demo).
 
 ## Where we start (audit of GitHub `main`, 23 Nov 2026)
 
@@ -34,17 +34,26 @@ Backend `E-wallet-backend@84f2bc1` (20 Nov), frontend `E-wallet-frontend@c861197
 5. Business timezone is `Africa/Dar_es_Salaam`; currency TZS.
 6. Live dashboards poll; no WebSocket infrastructure unless a feature needs push.
 
+**Decided on 23 Nov (your answers)**
+
+7. Audience: portfolio and pitch demo first, real money later.
+8. Outside provider: Plaid, in Sandbox. KYC uses Plaid Identity Verification.
+9. Withdrawals are customer-initiated: the customer confirms on their own phone with their own PIN, and the agent never sees it.
+10. Limits are tiered by KYC result: unverified and verified customers get different limits (demo amounts in Phase 1).
+
 ## Goals
 
 - A customer can register, get funded at an agent (cash-in), send, withdraw and prove a payment without staff help, in under 3 minutes for first use and 3 taps + PIN for a send.
 - Every screen a user sees shows real data from the API.
 - Money cannot be created, lost or double-posted: journals balance, retries are safe, issuance needs two people, reconciliation runs daily.
+- Pitch-ready: a scripted demo (register → verify with Plaid → add money → send → withdraw at agent → staff sees it live) runs end to end on seeded data.
 - One versioned API (`/api/v1`) documented well enough that a mobile client needs no backend changes beyond device/push endpoints.
 
 ## Non-goals
 
 - Loans (the frontend page has no backend and no design; hide it until it has a spec of its own).
-- Bank transfers, card or mobile-money self top-up, merchant payouts, multi-currency. Funding stays agent cash-in *(my call, from builder check)*.
+- Real bank transfers, card or mobile-money top-up, merchant payouts, multi-currency. Funding is agent cash-in, plus a Plaid Sandbox bank top-up that is clearly labelled as a demo.
+- Licensing, regulatory approval and production KYC/payment contracts for real money in Tanzania. Planned for later; the design keeps providers swappable.
 - Replacing the existing ledger, wallet model, or auth model.
 
 ## Anti-goals (would be failure even if it "works")
@@ -53,6 +62,7 @@ Backend `E-wallet-backend@84f2bc1` (20 Nov), frontend `E-wallet-frontend@c861197
 - A dashboard that looks live but shows sample data.
 - A feature that moves money without a balanced journal, a `transactions` row, and a test proving both.
 - A web-only shortcut that the mobile app would have to undo.
+- A demo flow that could be mistaken for real money movement (Sandbox flows are labelled on screen and on receipts).
 
 ## Constraints
 
@@ -74,7 +84,9 @@ Three orderings were considered. All end in the same place; they differ in what 
 **C. Secure core, then visible wins (recommended, my call).** A short Phase 0 that fixes only what touches money safety and drift (PIN flow, idempotency, tests, role/path drift), immediately followed by the most visible customer win (send money + history + receipts), with dashboards wired in parallel by page.
 *Why:* the hardening items are small and every later money feature reuses them (idempotency, lock order, test fixtures), so doing them first is cheaper than retrofitting. Dashboard wiring is independent per page, so it runs alongside without blocking.
 
-**Picked:** *pending your choice* (Open question 2).
+**In plain words:** all three reach the same finished app. They only differ in what gets built first. A fixes the hidden safety problems before anything new. B builds the impressive screens first and fixes safety later. C does a short safety fix (about a week and a half), then goes straight to the impressive parts.
+
+**Picked:** C, my recommendation for a portfolio and pitch. A reviewer or investor who tries to break the demo (double-tapping *Send*, asking where the customer PIN goes) gets a good answer, and the visible features still arrive early. *Awaiting your confirmation.*
 
 ### Delivery timeline (approach C, indicative)
 
@@ -95,6 +107,8 @@ gantt
     section Phase 1 Customer money
     Lookup, quote, transfer          :p1a, after p0c, 8d
     History, receipts, beneficiaries :p1b, after p1a, 7d
+    Plaid KYC and tiered limits      :p1d, after p1a, 6d
+    Plaid bank top-up demo           :p1e, after p1d, 4d
     Customer web screens             :p1c, after p1a, 12d
     section Phase 2 Agent experience
     Agent portal                     :p2, after p1b, 15d
@@ -111,7 +125,7 @@ gantt
 ### Phase 0 — Connect and harden
 
 **0.1 Withdrawal without PIN sharing.** Replace `customerPin` in the agent's cash-out request.
-Proposed model *(needs your pick, Open question 3)*: **customer-initiated withdrawal** — the customer enters the agent's float account number and the amount in their own app, sees the fee, and confirms with their own PIN. The agent's screen shows the confirmed withdrawal (polling) and the agent pays cash. Posting legs stay exactly as today's `cashOut`. Alternative: agent-initiated request that the customer approves in-app within 2 minutes (better at the counter, needs a pending state and expiry).
+Decided model *(your answer, 23 Nov)*: **customer-initiated withdrawal** — the customer enters the agent's float account number and the amount in their own app, sees the fee, and confirms with their own PIN. The agent's screen shows the confirmed withdrawal (polling) and the agent pays cash. Posting legs stay exactly as today's `cashOut`. Alternative: agent-initiated request that the customer approves in-app within 2 minutes (better at the counter, needs a pending state and expiry).
 
 Proposed customer-initiated withdrawal:
 
@@ -137,7 +151,7 @@ sequenceDiagram
     A->>C: Pays cash, both see the same reference
 ```
 
-Alternative (agent-initiated, customer approves):
+Alternative considered and not chosen (agent-initiated, customer approves):
 
 ```mermaid
 stateDiagram-v2
@@ -182,7 +196,14 @@ flowchart TD
 - `POST /api/v1/transactions/transfer` (customer → customer): PIN, idempotency key, limits (below); journal debits sender amount + fee, credits receiver amount and revenue fee. New `TransactionType.TRANSFER` and `LedgerTransactionType.TRANSFER`; a tariff band seeded for it.
 - `GET /api/v1/transactions/me` (paged, filter by type/date) and `GET /api/v1/transactions/{referenceNo}` (receipt; only parties to it may read it).
 - Customer web: home (balance, recent activity, quick actions), send flow (recipient → amount with fee → PIN → receipt), history, receipt share, withdraw (0.1).
-- **Limits** *(mechanism my call; amounts yours, Open question 4)*: per-transaction maximum and daily total per customer for transfer and withdraw, read from configuration (`application.properties`), enforced in one shared `LimitService`. KYC-tiered limits come later with KYC review (Phase 3).
+- **Limits, tiered by Plaid KYC** *(tiering your answer; amounts my call, demo values)*: enforced in one shared `LimitService` for transfer, withdraw and bank top-up, with values read from configuration so they can change without code.
+
+  | Tier | When | Per transaction | Daily total | Max balance |
+  |---|---|---|---|---|
+  | Basic | `kyc_status` ≠ VERIFIED | 200,000 TZS | 500,000 TZS | 1,000,000 TZS |
+  | Verified | `kyc_status` = VERIFIED | 3,000,000 TZS | 5,000,000 TZS | 10,000,000 TZS |
+
+  These are demo numbers. Before real money they must be replaced with the regulator's tiers.
 - **Receipts** *(my call)*: shared as an image or PDF generated in the app; no public verification link (that would be an unauthenticated endpoint and a separate security decision).
 - Saved recipients (`beneficiaries`) *(my call to include here; cheap and high-delight)*.
 
@@ -210,6 +231,102 @@ sequenceDiagram
     API-->>UI: receipt
     UI-->>S: Success screen, share receipt
 ```
+
+### Phase 1 — Plaid integration (Sandbox)
+
+Plaid is the outside provider for the demo *(your decision)*. Everything runs in Plaid **Sandbox**, the free test environment that uses test people and test banks. That is enough for a portfolio and a pitch, and nothing here assumes a live Plaid contract.
+
+**What Plaid does and doesn't cover (checked against Plaid's docs, Nov 2026)**
+
+| Plaid product | Use here | Coverage note |
+|---|---|---|
+| Identity Verification (IDV): ID document, selfie, data-source checks | **KYC for customers** *(your decision)* | Verifies end users in nearly 190 countries. Buying it in Production requires the company to be based in the US, Canada or UK. Tanzania isn't on Plaid's data-source list, so Tanzanian users would go through document + selfie checks. Sandbox accepts Plaid's test persona (Leslie Knope) and custom sample identities. |
+| Link + Auth + Balance (bank linking) | **"Add money from bank" demo** *(my call)* | Banks in the US, Canada and Europe only. No Tanzanian banks. |
+| Transfer (ACH/RTP) | Not used | US only. The demo simulates settlement through the ledger instead. |
+
+**KYC flow (Plaid IDV)**
+
+1. Customer taps *Verify identity*. Backend calls `/link/token/create` with `products: ["identity_verification"]`, the IDV `template_id` and `client_user_id` = the customer's `reference`.
+2. Frontend opens Plaid Link (`react-plaid-link`). The customer picks country and document, photographs it and takes a selfie.
+3. On `onSuccess`, the frontend sends the Link session ID to the backend. Success here does **not** mean the person passed.
+4. Backend calls `/identity_verification/get` and maps Plaid's status to `customers.kyc_status`. When deployed, a `STATUS_UPDATED` webhook to `POST /api/v1/webhooks/plaid` triggers the same fetch. Locally there's no public URL for webhooks, so the backend fetches on step 3 and on a *Refresh status* tap.
+5. Verified customers move to the higher limit tier straight away (below).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Customer
+    participant UI as Web app
+    participant API as Backend
+    participant P as Plaid (Sandbox)
+    participant DB as PostgreSQL
+    C->>UI: Tap "Verify identity"
+    UI->>API: POST /api/v1/kyc/link-token
+    API->>P: /link/token/create (identity_verification, template_id, client_user_id)
+    P-->>API: link_token
+    API-->>UI: link_token
+    UI->>P: Open Plaid Link (document + selfie)
+    P-->>UI: onSuccess(link_session_id)
+    UI->>API: POST /api/v1/kyc/complete (session id)
+    API->>P: /identity_verification/get
+    P-->>API: status
+    API->>DB: UPDATE customers SET kyc_status, kyc_reference, kyc_verified_at
+    API-->>UI: VERIFIED / PENDING / FAILED
+    P-)API: STATUS_UPDATED webhook (deployed only)
+    API->>P: /identity_verification/get
+    API->>DB: UPDATE customers
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> NOT_STARTED
+    NOT_STARTED --> PENDING: Link session started
+    PENDING --> VERIFIED: Plaid status success
+    PENDING --> FAILED: Plaid status failed
+    PENDING --> NOT_STARTED: session expired or cancelled
+    FAILED --> PENDING: retry allowed
+    VERIFIED --> [*]
+```
+
+**Add money from bank (demo)** *(my call: gives the pitch a self-service funding moment next to agent cash-in)*
+
+1. Customer links a Sandbox bank through Plaid Link (`products: ["auth"]`). The backend exchanges the `public_token` for an `access_token` and stores it encrypted.
+2. Customer enters an amount. The backend checks the linked account's balance (`/accounts/balance/get`), then posts a journal **ESCROW_BANK → CUSTOMER_MAIN**, as if the bank deposit had settled into the company's escrow account. New `LedgerTransactionType.BANK_TOPUP` and `TransactionType.BANK_TOPUP`.
+3. The screen and the receipt label it *Demo: Plaid Sandbox*, so nobody mistakes it for real money.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Customer
+    participant UI as Web app
+    participant API as Backend
+    participant P as Plaid (Sandbox)
+    participant L as LedgerService
+    C->>UI: Link a bank
+    UI->>API: POST /api/v1/banks/link-token
+    API->>P: /link/token/create (auth)
+    UI->>P: Plaid Link, Sandbox bank login
+    P-->>UI: public_token
+    UI->>API: POST /api/v1/banks/exchange
+    API->>P: /item/public_token/exchange
+    API->>API: store access_token encrypted
+    C->>UI: Add 50,000 TZS from bank
+    UI->>API: POST /api/v1/transactions/bank-topup + Idempotency-Key
+    API->>P: /accounts/balance/get
+    API->>L: postJournal(BANK_TOPUP: ESCROW_BANK DR, CUSTOMER_MAIN CR)
+    API-->>UI: receipt marked "Demo: Plaid Sandbox"
+```
+
+**Data changes (new migrations)**
+
+- `customers`: add `kyc_status varchar(20) NOT NULL DEFAULT 'NOT_STARTED'` with `CHECK (kyc_status IN ('NOT_STARTED','PENDING','VERIFIED','FAILED'))`, plus `kyc_provider varchar(20)` (`PLAID`), `kyc_reference varchar(100)` (the IDV session ID) and `kyc_verified_at timestamptz`.
+- New `linked_bank_accounts` and `plaid_webhook_events` tables (DDL in *Tables to add*).
+
+**Configuration**: `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV=sandbox`, `PLAID_IDV_TEMPLATE_ID`, `PLAID_WEBHOOK_URL` (deployed only) and `APP_ENCRYPTION_KEY` (for access tokens). These are secrets: they go in `.env`, never in git.
+
+**Libraries**: `com.plaid:plaid-java` in the backend (new package `integration/plaid/`) and `react-plaid-link` in the frontend.
+
+**Before real money** (not part of this program): Plaid can't move Tanzanian money. Production needs a Tanzanian payment or mobile-money provider for funding and payouts. KYC needs either Plaid IDV bought through a US, Canada or UK entity, or a provider that checks NIDA directly. The integration sits behind two interfaces, `KycProvider` and `FundingProvider`, so the provider can be swapped without touching wallet or ledger code *(my call)*.
 
 ### Phase 2 — Agent experience
 
@@ -272,11 +389,13 @@ flowchart LR
     end
     DB[(PostgreSQL e_walletDB)]
     MAIL[SMTP / SMS for OTP]
+    PLAID[Plaid Sandbox: IDV, Link, Auth, Balance]
     CW & AP & SC --> NG --> SEC
     MA --> SEC
     SEC --> ID & MON & OPS
     ID & MON & OPS --> DB
     ID --> MAIL
+    ID & MON --> PLAID
 ```
 
 
@@ -699,6 +818,7 @@ sequenceDiagram
 | Cash-in | Agent float → Customer main (amount); Commission pool → Agent commission (commission) |
 | Cash-out | Customer main (amount + fee) → Agent float (amount) + Revenue (fee); Commission pool → Agent commission (commission) |
 | Transfer *(Phase 1)* | Customer A (amount + fee) → Customer B (amount) + Revenue (fee) |
+| Bank top-up *(Phase 1, Plaid Sandbox demo)* | Escrow bank → Customer main (amount) |
 
 #### Data dictionary
 
@@ -1047,12 +1167,13 @@ Constraints & indexes: unique (region_id, name); indexes: `idx_district_region_i
 | `Gender` | MALE, FEMALE, OTHER | `agents.gender` |
 | `WalletType` | COMPANY_MASTER_ACCOUNT, REVENUE, ESCROW_BANK, COMMISSION, AGENT_FLOAT, AGENT_COMMISSION, CUSTOMER_MAIN | `wallets.wallet_type` |
 | `WalletStatus` | ACTIVE, SUSPENDED, BLOCKED, CLOSED | `wallets.status` |
-| `TransactionType` | CASH_IN, CASH_OUT, SERVICE_FEE, SERVICE_COMMISSION (+ TRANSFER, Phase 1) | `transactions.transaction_type`, `tariffs.transaction_type` |
+| `TransactionType` | CASH_IN, CASH_OUT, SERVICE_FEE, SERVICE_COMMISSION (+ TRANSFER, BANK_TOPUP, Phase 1) | `transactions.transaction_type`, `tariffs.transaction_type` |
 | `TransactionStatus` | PENDING, COMPLETED, FAILED | `transactions.status` |
-| `LedgerTransactionType` | MINT_FLOAT, TOPUP_FLOAT, AGENT_WITHDRAW, TOPUP_COMMISSION, CASH_IN, CASH_OUT (+ TRANSFER, Phase 1) | `transaction_journal.transaction_type` |
+| `LedgerTransactionType` | MINT_FLOAT, TOPUP_FLOAT, AGENT_WITHDRAW, TOPUP_COMMISSION, CASH_IN, CASH_OUT (+ TRANSFER, BANK_TOPUP, Phase 1) | `transaction_journal.transaction_type` |
 | `EntryType` | DEBIT, CREDIT | `transaction_journal_line.entry_type` |
 | `RequestType` | TOPUP, WITHDRAWAL | `treasury_requests.request_type` |
 | `RequestStatus` | PENDING, APPROVED, REJECTED | `treasury_requests.status` |
+| `KycStatus` *(new, Phase 1)* | NOT_STARTED, PENDING, VERIFIED, FAILED | `customers.kyc_status` |
 
 #### Reference and seed data
 
@@ -1123,6 +1244,34 @@ CREATE TABLE audit_logs (
 );
 CREATE INDEX idx_audit_logs_entity ON audit_logs (entity_type, entity_id);
 CREATE INDEX idx_audit_logs_actor_created ON audit_logs (actor_id, created_at);
+
+-- Phase 1: Plaid bank linking (Sandbox demo)
+CREATE TABLE linked_bank_accounts (
+    id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                uuid NOT NULL REFERENCES users(id),
+    provider               varchar(20) NOT NULL DEFAULT 'PLAID',
+    provider_item_id       varchar(100) NOT NULL,
+    access_token_encrypted text NOT NULL,          -- AES-GCM with APP_ENCRYPTION_KEY
+    provider_account_id    varchar(100) NOT NULL,
+    institution_name       varchar(150),
+    account_mask           varchar(10),            -- last 4 digits only
+    status                 varchar(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','REVOKED')),
+    created_at             timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (user_id, provider_account_id)
+);
+CREATE INDEX idx_linked_bank_accounts_user ON linked_bank_accounts (user_id);
+
+-- Phase 1: Plaid webhooks, stored once so a retry is never processed twice
+CREATE TABLE plaid_webhook_events (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    webhook_type  varchar(50) NOT NULL,
+    webhook_code  varchar(50) NOT NULL,
+    object_id     varchar(100) NOT NULL,          -- e.g. identity_verification_id
+    payload       jsonb NOT NULL,
+    received_at   timestamptz NOT NULL DEFAULT now(),
+    processed_at  timestamptz,
+    UNIQUE (webhook_type, webhook_code, object_id, received_at)
+);
 ```
 
 Later: `devices` (binding, push token; Phase 5), `notifications` (Phase 4), `savings_vaults`, `payment_requests` and `billers` (Phase 4, each with its own spec).
@@ -1161,6 +1310,7 @@ e-wallet-backend/
    ├─ + idempotency/                  Idempotency-Key filter + idempotency_keys
    ├─ + limit/                        LimitService (per-transaction and daily)
    ├─ + audit/                        audit_logs (Phase 3)
+   ├─ + integration/plaid/            KycProvider + FundingProvider via plaid-java, webhook controller
    └─ + config/OpenApiConfig.java     springdoc
    src/main/resources/db/migration/   V1…V47, next V48
    src/test/java/…                    11 classes, 74 tests (+ TransactionServiceTest)
@@ -1188,6 +1338,7 @@ e-wallet-frontend/
       ├─ - loans/                hide until it has a backend and spec
       ├─ - */data.ts             mock data, replaced by per-feature api.ts
       ├─ + send-money/  + history/  + agent/
+      ├─ + kyc/  + banks/            Plaid Link (react-plaid-link): verify identity, link bank, add money
 ```
 
 Frontend conventions to adopt: all HTTP goes through `src/lib/api`, never `fetch` inside components. Each feature owns `api.ts`, `types.ts` and `pages/`. Convert `.jsx` to `.tsx` as files are touched. Role names match the backend (`ADMIN`, `AGENT`, `CUSTOMER`).
@@ -1317,6 +1468,10 @@ Where the Compose file lives is left to the builder. It can sit in the backend r
 | `APP_MAIL_HOST/PORT/USER/PASS` | SMTP for OTP; Mailpit locally |
 | `APP_INITIAL_ADMIN_*` | Seeds the first admin; enable only on a fresh database |
 | `VITE_API_BASE_URL` | Frontend build-time; `/api/v1` behind nginx |
+| `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` | Plaid keys; `sandbox` for the demo |
+| `PLAID_IDV_TEMPLATE_ID` | Identity Verification template from the Plaid Dashboard |
+| `PLAID_WEBHOOK_URL` | Public HTTPS URL for Plaid webhooks (deployed only) |
+| `APP_ENCRYPTION_KEY` | Encrypts stored Plaid access tokens |
 
 The backend ignores `.env` and commits `.env.example`. The frontend commits `.env` and `.env.production`, which hold only the public API URL. No secrets go in either repo.
 
@@ -1424,10 +1579,16 @@ jobs:
 - Frontend component breakdown and state management inside each page, following the current feature-folder layout.
 - Polling intervals (suggested 5 s for withdrawal confirmation, 30 s for dashboards).
 
-## Open questions (yours — these change what gets built)
+## Answers and remaining question
 
-1. **What is this for, and who uses it first?** Real customers with real money, a client, a pitch/demo, or a portfolio/academic project.
-2. **Which approach: A, B or C?** (Recommended: C.)
-3. **Withdrawal model:** customer-initiated in their own app (recommended; simpler, no pending state), or agent-initiated with customer approval in-app?
-4. **Limit amounts:** per-transaction and daily maximums for transfer and withdraw (TZS), and whether they differ for NIDA-verified customers. A business/regulatory call I shouldn't invent.
-5. **Push access:** this session can read both repos but not push yet; until the Claude GitHub App is connected, changes arrive as patches you apply in IntelliJ.
+| # | Question | Answer (23 Nov) |
+|---|---|---|
+| 1 | What is it for? | Portfolio project and pitch demo; real money later. Plaid as the API provider for now. |
+| 2 | Approach | Explained in plain words under Approaches. **C recommended, awaiting your confirmation.** |
+| 3 | Withdrawal model | Customer-initiated, as recommended. |
+| 4 | Limits | Tiered by Plaid KYC result; demo amounts in Phase 1. |
+| 5 | Push access | You'll connect the Claude GitHub App. |
+
+**Still needed from you:** confirm approach C (or pick A or B), and approve this document. After that, the next step is a step-by-step build plan for Phase 0.
+
+**Setup you'll need for Plaid:** a free Plaid Dashboard account, Sandbox keys, Identity Verification enabled for Sandbox (Products page → *Enable Sandbox*; Plaid may ask for a product-access request), and an IDV template.
