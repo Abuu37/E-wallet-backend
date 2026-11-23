@@ -102,7 +102,7 @@ Proposed model *(needs your pick, Open question 3)*: **customer-initiated withdr
 - `POST /api/v1/transactions/transfer` (customer → customer): PIN, idempotency key, limits (below); journal debits sender amount + fee, credits receiver amount and revenue fee. New `TransactionType.TRANSFER` and `LedgerTransactionType.TRANSFER`; a tariff band seeded for it.
 - `GET /api/v1/transactions/me` (paged, filter by type/date) and `GET /api/v1/transactions/{referenceNo}` (receipt; only parties to it may read it).
 - Customer web: home (balance, recent activity, quick actions), send flow (recipient → amount with fee → PIN → receipt), history, receipt share, withdraw (0.1).
-- **Limits** *(mechanism my call; amounts yours, Open question 5)*: per-transaction maximum and daily total per customer for transfer and withdraw, read from configuration (`application.properties`), enforced in one shared `LimitService`. KYC-tiered limits come later with KYC review (Phase 3).
+- **Limits** *(mechanism my call; amounts yours, Open question 4)*: per-transaction maximum and daily total per customer for transfer and withdraw, read from configuration (`application.properties`), enforced in one shared `LimitService`. KYC-tiered limits come later with KYC review (Phase 3).
 - **Receipts** *(my call)*: shared as an image or PDF generated in the app; no public verification link (that would be an unauthenticated endpoint and a separate security decision).
 - Saved recipients (`beneficiaries`) *(my call to include here; cheap and high-delight)*.
 
