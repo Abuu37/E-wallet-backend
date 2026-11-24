@@ -52,6 +52,7 @@ public class CustomerService {
     private final UserSessionRepository userSessionRepository;
     private final PhoneNumberNormalizer phoneNumberNormalizer;
     private final ApplicationEventPublisher eventPublisher;
+    private final com.application.e_wallet.audit.service.AuditService auditService;
 
     //======================== REGISTER A CUSTOMER (self-registration) ==================== //
     @Transactional
@@ -142,7 +143,12 @@ public class CustomerService {
         }
 
         CustomerEntity customer = findCustomerOrThrow(customerId);
+        CustomerStatus before = customer.getStatus();
         applyStatus(customer, request.status());
+        if (before != request.status()) {
+            auditService.recordAsCurrentUser("CUSTOMER_STATUS_CHANGE", "CUSTOMER", customer.getId(),
+                    java.util.Map.of("status", before.name()), java.util.Map.of("status", request.status().name()), request.reason());
+        }
         return toProfileResponse(customerRepository.save(customer));
     }
 

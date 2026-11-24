@@ -72,6 +72,7 @@ public class    AgentService {
     private final OtpGenerator otpGenerator;
     private final PasswordEncoder pinEncoder;
     private final EmailService emailService;
+    private final com.application.e_wallet.audit.service.AuditService auditService;
 
     //======================== CREATE AN AGENT ==================== //
     @Transactional
@@ -259,7 +260,12 @@ public class    AgentService {
     @Transactional
     public AgentUpdateResponse updateAgentStatus(UUID agentId, AgentStatusUpdateRequest request) {
         AgentEntity agent = findAgentOrThrow(agentId);
+        AgentStatus before = agent.getAgentStatus();
         applyStatus(agent, request.status());
+        if (before != request.status()) {
+            auditService.recordAsCurrentUser("AGENT_STATUS_CHANGE", "AGENT", agent.getId(),
+                    java.util.Map.of("status", before.name()), java.util.Map.of("status", request.status().name()), request.reason());
+        }
         return toUpdateResponse(agentRepository.save(agent));
     }
 

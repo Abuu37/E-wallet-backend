@@ -35,6 +35,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class CustomerServiceTest {
 
+    @Mock private com.application.e_wallet.audit.service.AuditService auditService;
     @Mock private CustomerRepository customerRepository;
     @Mock private UserRepository userRepository;
     @Mock private RoleRepository roleRepository;

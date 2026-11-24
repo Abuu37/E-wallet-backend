@@ -42,6 +42,7 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class TreasuryMakerCheckerTest {
 
+    @Mock private com.application.e_wallet.audit.service.AuditService auditService;
     @Mock private TreasuryRequestRepository treasuryRequestRepository;
     @Mock private AgentRepository agentRepository;
     @Mock private UserRepository userRepository;
@@ -151,5 +152,30 @@ class TreasuryMakerCheckerTest {
         assertThat(request.getStatus()).isEqualTo(RequestStatus.REJECTED);
         assertThat(request.getDecisionNote()).isEqualTo("Slip does not match the bank statement");
         verifyNoInteractions(treasuryService);
+    }
+
+    @Test
+    void everyTreasuryDecisionAndRequestIsWrittenToTheAuditLog() {
+        service.createStaffRequest(maker.getId(), RequestType.MINT, new BigDecimal("5000000.00"), "Bank deposit slip 118");
+        verify(auditService).record(eq(maker.getId()), eq("TREASURY_REQUEST_CREATE"), eq("TREASURY_REQUEST"), any(), any(), any(), eq("Bank deposit slip 118"), any());
+
+        TreasuryRequestEntity toApprove = pending(RequestType.MINT);
+        when(treasuryRequestRepository.findByRequestId(requestId)).thenReturn(Optional.of(toApprove));
+        service.approveRequest(requestId, checker.getId());
+        verify(auditService).record(eq(checker.getId()), eq("TREASURY_REQUEST_APPROVE"), eq("TREASURY_REQUEST"), any(), any(), any(), any(), any());
+
+        TreasuryRequestEntity toReject = pending(RequestType.COMMISSION_TOPUP);
+        when(treasuryRequestRepository.findByRequestId(requestId)).thenReturn(Optional.of(toReject));
+        service.rejectRequest(requestId, checker.getId(), new TreasuryRequestDecisionRequest("Slip does not match"));
+        verify(auditService).record(eq(checker.getId()), eq("TREASURY_REQUEST_REJECT"), eq("TREASURY_REQUEST"), any(), any(), any(), eq("Slip does not match"), any());
+    }
+
+    @Test
+    void aRefusedSelfApprovalLeavesNoAuditEntry() {
+        when(treasuryRequestRepository.findByRequestId(requestId)).thenReturn(Optional.of(pending(RequestType.MINT)));
+
+        assertThatThrownBy(() -> service.approveRequest(requestId, maker.getId())).isInstanceOf(AccessDeniedException.class);
+
+        verify(auditService, never()).record(any(), eq("TREASURY_REQUEST_APPROVE"), any(), any(), any(), any(), any(), any());
     }
 }

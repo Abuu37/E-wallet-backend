@@ -45,6 +45,7 @@ public class TreasuryRequestService {
     private final StaffRepository staffRepository;
     private final WalletRepository walletRepository;
     private final TreasuryService treasuryService;
+    private final com.application.e_wallet.audit.service.AuditService auditService;
 
     //=================== Agent creates the treasury request ==================//
     @Transactional
@@ -170,7 +171,20 @@ public class TreasuryRequestService {
                 .requestedBy(requester)
                 .status(RequestStatus.PENDING)
                 .build());
+        auditService.record(requesterUserId, "TREASURY_REQUEST_CREATE", "TREASURY_REQUEST", saved.getId(), null,
+                details("type", type.name(), "amount", amount.toPlainString(), "ref", saved.getRequestRef()), description, null);
         return toResponse(saved);
+    }
+
+    /** Key/value pairs for an audit entry; null values are skipped so auditing can never break the action. */
+    private static java.util.Map<String, Object> details(Object... keyValues) {
+        java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+        for (int i = 0; i + 1 < keyValues.length; i += 2) {
+            if (keyValues[i + 1] != null) {
+                map.put(String.valueOf(keyValues[i]), keyValues[i + 1]);
+            }
+        }
+        return map;
     }
 
     private static boolean needsSecondStaff(TreasuryRequestEntity request) {
@@ -214,6 +228,9 @@ public class TreasuryRequestService {
         treasuryRequest.setDecisionNote(null);
 
         TreasuryRequestEntity saved = treasuryRequestRepository.save(treasuryRequest);
+        auditService.record(adminUserId, "TREASURY_REQUEST_APPROVE", "TREASURY_REQUEST", saved.getId(),
+                java.util.Map.of("status", "PENDING"), details("status", "APPROVED", "type", saved.getRequestType().name(), "amount", saved.getAmount().toPlainString(), "ref", saved.getRequestRef()),
+                null, null);
         return toResponse(saved);
     }
 
@@ -241,7 +258,11 @@ public class TreasuryRequestService {
         treasuryRequest.setDecisionNote(request.reason().trim());
         treasuryRequest.setDecidedAt(OffsetDateTime.now());
 
-        return toResponse(treasuryRequestRepository.save(treasuryRequest));
+        TreasuryRequestEntity rejected = treasuryRequestRepository.save(treasuryRequest);
+        auditService.record(adminUserId, "TREASURY_REQUEST_REJECT", "TREASURY_REQUEST", rejected.getId(),
+                java.util.Map.of("status", "PENDING"), details("status", "REJECTED", "type", rejected.getRequestType().name(), "amount", rejected.getAmount().toPlainString(), "ref", rejected.getRequestRef()),
+                request.reason(), null);
+        return toResponse(rejected);
     }
 
     // Unlocked lookup for read paths (getRequest). Must never be used by approve/reject -

@@ -55,6 +55,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AgentServiceTest {
 
+    @Mock private com.application.e_wallet.audit.service.AuditService auditService;
     @Mock private AgentRepository agentRepository;
     @Mock private UserRepository userRepository;
     @Mock private RoleRepository roleRepository;
@@ -231,7 +232,8 @@ class AgentServiceTest {
         when(walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_COMMISSION))
                 .thenReturn(Optional.of(commissionWallet));
 
-        var response = agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.SUSPENDED));
+        var response = agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.SUSPENDED, "Suspended after a failed audit"));
+        org.mockito.Mockito.verify(auditService).recordAsCurrentUser(org.mockito.ArgumentMatchers.eq("AGENT_STATUS_CHANGE"), org.mockito.ArgumentMatchers.eq("AGENT"), org.mockito.ArgumentMatchers.eq(agentId), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("Suspended after a failed audit"));
 
         assertThat(response.status()).isEqualTo(AgentStatus.SUSPENDED.name());
         assertThat(user.getStatus()).isEqualTo(UserStatus.SUSPENDED);
@@ -268,7 +270,7 @@ class AgentServiceTest {
         when(walletRepository.findByUserIdAndWalletType(userId, WalletType.AGENT_COMMISSION))
                 .thenReturn(Optional.of(commissionWallet));
 
-        var response = agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.ACTIVE));
+        var response = agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.ACTIVE, "Reinstated after review"));
 
         assertThat(response.status()).isEqualTo(AgentStatus.ACTIVE.name());
         assertThat(floatWallet.getStatus()).isEqualTo(WalletStatus.ACTIVE);
@@ -287,7 +289,8 @@ class AgentServiceTest {
         when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
         when(agentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.ACTIVE));
+        agentService.updateAgentStatus(agentId, new AgentStatusUpdateRequest(AgentStatus.ACTIVE, "Reinstated after review"));
+        org.mockito.Mockito.verify(auditService, org.mockito.Mockito.never()).recordAsCurrentUser(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
 
         verify(userRepository, never()).save(any());
         verify(walletRepository, never()).findByUserIdAndWalletType(any(), any());

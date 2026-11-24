@@ -49,6 +49,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TreasuryRequestServiceTest {
 
+    @Mock private com.application.e_wallet.audit.service.AuditService auditService;
     @Mock private TreasuryRequestRepository treasuryRequestRepository;
     @Mock private AgentRepository agentRepository;
     @Mock private UserRepository userRepository;

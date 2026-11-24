@@ -1,6 +1,7 @@
 package com.application.e_wallet.tariff.service;
 
 import com.application.e_wallet.common.exception.BadRequestException;
+import com.application.e_wallet.tariff.dto.TariffBandItem;
 import com.application.e_wallet.tariff.entity.TariffEntity;
 import com.application.e_wallet.tariff.repository.TariffRepository;
 import lombok.RequiredArgsConstructor;
@@ -8,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -22,5 +25,15 @@ public class TariffService {
                 .orElseThrow(() -> new BadRequestException(
                         "No applicable tariff configured for this amount"
                 ));
+    }
+
+    /** Every band (live and inactive), grouped by transaction type and ordered by amount range. */
+    @Transactional(readOnly = true)
+    public List<TariffBandItem> listBands() {
+        return tariffRepository.findAll().stream()
+                .sorted(Comparator.comparing(TariffEntity::getTransactionType).thenComparing(TariffEntity::getMinAmount))
+                .map(t -> new TariffBandItem(t.getId(), t.getTransactionType(), t.getMinAmount(), t.getMaxAmount(),
+                        t.getFee(), t.getAgentCommission(), Boolean.TRUE.equals(t.getActive())))
+                .toList();
     }
 }
