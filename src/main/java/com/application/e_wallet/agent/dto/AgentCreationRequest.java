@@ -4,6 +4,7 @@ package com.application.e_wallet.agent.dto;
 import com.application.e_wallet.agent.entity.Gender;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
 
@@ -17,7 +18,7 @@ public record AgentCreationRequest(
         @NotBlank
         String firstName,
 
-        @NotBlank
+        @Size(max = 100, message = "Middle name cannot exceed 100 characters")
         String middleName,
 
         @NotBlank
