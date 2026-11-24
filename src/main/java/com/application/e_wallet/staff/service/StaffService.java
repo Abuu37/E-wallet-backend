@@ -200,7 +200,8 @@ public class StaffService {
                 staff.getLastName(),
                 staff.getPhoneNumber(),
                 staff.getJobTitle(),
-                staff.getStatus().name()
+                staff.getStatus().name(),
+                staff.getUser().getRole().getName()
         );
     }
 

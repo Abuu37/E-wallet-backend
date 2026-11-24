@@ -10,6 +10,7 @@ public record StaffSummaryResponse(
         String lastName,
         String phoneNumber,
         String jobTitle,
-        String status
+        String status,
+        String roleName
 ) {
 }

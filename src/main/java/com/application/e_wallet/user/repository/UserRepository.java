@@ -8,6 +8,8 @@ import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<UserEntity, UUID> {
 
+    long countByRoleId(UUID roleId);
+
     Optional<UserEntity> findByEmail(String email);
 
     Optional<UserEntity> findByPhone(String phone);
