@@ -91,7 +91,7 @@ public class AuthController {
             @CookieValue(name = "${app.auth.refresh-cookie.name:wp_refresh}", required = false) String refreshToken,
             HttpServletRequest httpRequest) {
 
-        rateLimitingService.enforce(httpRequest.getRemoteAddr(), null);
+        rateLimitingService.enforceRefresh(httpRequest.getRemoteAddr());
 
         AuthResult result = authService.refreshToken(refreshToken);
 

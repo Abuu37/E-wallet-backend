@@ -19,6 +19,12 @@ public class RateLimitingService {
             .expireAfterAccess(1, TimeUnit.HOURS)
             .build();
 
+    // Session refresh has its own, larger per-IP bucket: every page reload refreshes, and many people can
+    // share one NAT address (office, demo wifi). It must not compete with login and OTP traffic.
+    private final Cache<String, Bucket> refreshCache = Caffeine.newBuilder()
+            .expireAfterAccess(1, TimeUnit.HOURS)
+            .build();
+
     private final Cache<String, Bucket> accountCache = Caffeine.newBuilder()
             .expireAfterAccess(1, TimeUnit.HOURS)
             .build();
@@ -35,6 +41,16 @@ public class RateLimitingService {
         return Bucket.builder()
                 .addLimit(Bandwidth.classic(5, Refill.intervally(1, Duration.ofMinutes(3))))
                 .build();
+    }
+
+    /** Per-IP limit for session refresh: 100 per minute. Throws 429 with Retry-After when exceeded. */
+    public void enforceRefresh(String ip) {
+        ConsumptionProbe probe = refreshCache.get(ip, key -> Bucket.builder()
+                .addLimit(Bandwidth.classic(100, Refill.intervally(100, Duration.ofMinutes(1))))
+                .build()).tryConsumeAndReturnRemaining(1);
+        if (!probe.isConsumed()) {
+            throw tooMany(probe);
+        }
     }
 
     public boolean tryConsumeIp(String ip) {
