@@ -1,0 +1,4 @@
+ALTER TABLE users
+    ADD COLUMN failed_pin_attempts INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN locked_until TIMESTAMP WITH TIME ZONE,
+    ADD COLUMN unlock_requires_otp BOOLEAN NOT NULL DEFAULT FALSE;

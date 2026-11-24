@@ -4,12 +4,13 @@ import com.application.e_wallet.auth.dto.*;
 import com.application.e_wallet.auth.service.AuthService;
 import com.application.e_wallet.auth.service.PinResetService;
 import com.application.e_wallet.auth.service.RateLimitingService;
+import com.application.e_wallet.auth.service.RefreshCookieFactory;
 import com.application.e_wallet.common.dto.ApiResponse;
-import com.application.e_wallet.common.exception.TooManyRequestsException;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -25,179 +26,97 @@ public class AuthController {
     private final AuthService authService;
     private final PinResetService pinResetService;
     private final RateLimitingService rateLimitingService;
+    private final RefreshCookieFactory refreshCookieFactory;
 
-    @PostMapping("/set-pin")
-    public ResponseEntity<ApiResponse<UserProfileResponse>> setPin(@Valid @RequestBody SetPinRequest request, HttpServletRequest httpRequest){
-
-        String ip = httpRequest.getRemoteAddr();
-
-        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.getEmail())) {
-            throw new TooManyRequestsException("Too many attempts. Please try again later.");
-        }
-
-        UserProfileResponse response = authService.setPin(request);
-
-        ApiResponse<UserProfileResponse> body = ApiResponse.<UserProfileResponse>builder()
+    private static <T> ApiResponse<T> ok(String message, T data) {
+        return ApiResponse.<T>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Customer registered successfully. You can now log in.")
-                .data(response)
+                .message(message)
+                .data(data)
                 .build();
+    }
 
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(body);
+    @PostMapping("/set-pin")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> setPin(@Valid @RequestBody SetPinRequest request, HttpServletRequest httpRequest) {
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "set-pin:" + request.getEmail());
+        return ResponseEntity.ok(ok("Customer registered successfully. You can now log in.", authService.setPin(request)));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest){
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "login:" + request.getPhone());
 
-        String ip = httpRequest.getRemoteAddr();
+        AuthResult result = authService.login(request);
 
-        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.getPhone())) {
-            throw new TooManyRequestsException("Too many login attempts. Please try again later.");
-        }
-
-        LoginResponse response = authService.login(request);
-
-        ApiResponse<LoginResponse> body = ApiResponse.<LoginResponse>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("Login successful")
-                .data(response)
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(body);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.create(result.refreshToken()).toString())
+                .body(ok("Login successful", result.body()));
     }
 
     @GetMapping("/status")
-    public ResponseEntity<ApiResponse<AccountStatusResponse>> accountStatus(Authentication authentication){
+    public ResponseEntity<ApiResponse<AccountStatusResponse>> accountStatus(Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        AccountStatusResponse response = authService.getAccountStatus(principal.email());
-
-        ApiResponse<AccountStatusResponse> body = ApiResponse.<AccountStatusResponse>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("Account status retrieved successfully")
-                .data(response)
-                .build();
-
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(body);
+        return ResponseEntity.ok(ok("Account status retrieved successfully", authService.getAccountStatus(principal.email())));
     }
 
     @PostMapping("/change-pin")
-    public ResponseEntity<ApiResponse<Void>> changePin(@Valid @RequestBody ChangePinRequest request, Authentication authentication, HttpServletRequest httpRequest){
+    public ResponseEntity<ApiResponse<Void>> changePin(@Valid @RequestBody ChangePinRequest request, Authentication authentication, HttpServletRequest httpRequest) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-
-        String ip = httpRequest.getRemoteAddr();
-
-        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(principal.email())) {
-            throw new TooManyRequestsException("Too many attempts. Please try again later.");
-        }
-
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "change-pin:" + principal.email());
         authService.changePin(principal.email(), request);
-
-        ApiResponse<Void> body = ApiResponse.<Void>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("PIN changed successfully")
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(body);
+        return ResponseEntity.ok(ok("PIN changed successfully", null));
     }
 
     @PostMapping("/forgot-pin")
-    public ResponseEntity<ApiResponse<Void>> forgotPin(@Valid @RequestBody ForgotPinRequest request, HttpServletRequest httpRequest){
-
-        String ip = httpRequest.getRemoteAddr();
-
-        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.email())) {
-            throw new TooManyRequestsException("Too many requests. Please try again later.");
-        }
-
+    public ResponseEntity<ApiResponse<Void>> forgotPin(@Valid @RequestBody ForgotPinRequest request, HttpServletRequest httpRequest) {
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "forgot-pin:" + request.email());
         pinResetService.forgotPin(request.email());
-
-        ApiResponse<Void> body = ApiResponse.<Void>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("OTP has been sent to your email.")
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(body);
+        return ResponseEntity.ok(ok("OTP has been sent to your email.", null));
     }
 
     @PostMapping("/reset-pin")
-    public ResponseEntity<ApiResponse<Void>> resetPin(@Valid @RequestBody ResetPinRequest request, HttpServletRequest httpRequest){
-
-        String ip = httpRequest.getRemoteAddr();
-
-        if (!rateLimitingService.tryConsumeIp(ip) || !rateLimitingService.tryConsumeAccount(request.email())) {
-            throw new TooManyRequestsException("Too many attempts. Please try again later.");
-        }
-
-        pinResetService.resetPin(
-                request.email(), request.otp(), request.newPin()
-        );
-
-        ApiResponse<Void> body = ApiResponse.<Void>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("PIN reset successfully")
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(body);
+    public ResponseEntity<ApiResponse<Void>> resetPin(@Valid @RequestBody ResetPinRequest request, HttpServletRequest httpRequest) {
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "reset-pin:" + request.email());
+        pinResetService.resetPin(request.email(), request.otp(), request.newPin());
+        return ResponseEntity.ok(ok("PIN reset successfully", null));
     }
 
+    /**
+     * Cookie-authenticated, so CSRF-protected (see SecurityConfig). The refresh token is read
+     * from the httpOnly cookie and rotated: a new cookie replaces it on every call.
+     */
     @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<LoginResponse>> refresh(@Valid @RequestBody RefreshTokenRequest request, HttpServletRequest httpRequest){
+    public ResponseEntity<ApiResponse<LoginResponse>> refresh(
+            @CookieValue(name = "${app.auth.refresh-cookie.name:wp_refresh}", required = false) String refreshToken,
+            HttpServletRequest httpRequest) {
 
-        String ip = httpRequest.getRemoteAddr();
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), null);
 
-        if (!rateLimitingService.tryConsumeIp(ip)) {
-            throw new TooManyRequestsException("Too many requests. Please try again later.");
-        }
+        AuthResult result = authService.refreshToken(refreshToken);
 
-        LoginResponse response = authService.refreshToken(request.getRefreshToken());
-
-        ApiResponse<LoginResponse> body = ApiResponse.<LoginResponse>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("Token refreshed successfully")
-                .data(response)
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(body);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.create(result.refreshToken()).toString())
+                .body(ok("Token refreshed successfully", result.body()));
     }
 
+    /** Public so an expired access token can still sign out; identified by the cookie alone. CSRF-protected. */
     @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(@Valid @RequestBody LogoutRequest request, Authentication authentication){
-        AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        authService.logout(principal.email(), request.getRefreshToken());
+    public ResponseEntity<ApiResponse<Void>> logout(
+            @CookieValue(name = "${app.auth.refresh-cookie.name:wp_refresh}", required = false) String refreshToken,
+            HttpServletRequest httpRequest) {
 
-        ApiResponse<Void> body = ApiResponse.<Void>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("Logged out successfully")
-                .build();
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), null);
+        authService.logout(refreshToken);
 
-        return ResponseEntity
-                .status(HttpStatus.OK)
-                .body(body);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.clear().toString())
+                .body(ok("Logged out successfully", null));
     }
 
+    /** Lets the SPA obtain the XSRF-TOKEN cookie before its first refresh; the CSRF filter writes it. */
+    @GetMapping("/csrf")
+    public ResponseEntity<Void> csrf() {
+        return ResponseEntity.noContent().build();
+    }
 }
-
-

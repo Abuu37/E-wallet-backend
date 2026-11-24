@@ -30,6 +30,9 @@ public class UserSessionEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private UserEntity user;
 
+    @Column(name = "family_id", nullable = false)
+    private UUID familyId;
+
     @Column(name = "refresh_token_hash", nullable = false, unique = true)
     private String refreshTokenHash;
 

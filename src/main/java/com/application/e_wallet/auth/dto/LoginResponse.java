@@ -13,7 +13,6 @@ import java.util.List;
 @JsonPropertyOrder({
         "accessToken",
         "accessTokenExpiresIn",
-        "refreshToken",
         "refreshTokenExpiresIn",
         "tokenType",
         "roles",
@@ -24,7 +23,6 @@ public class LoginResponse {
 
     private String accessToken;
     private long accessTokenExpiresIn;
-    private String refreshToken;
     private long refreshTokenExpiresIn;
     private String tokenType;
     private List<String> roles;

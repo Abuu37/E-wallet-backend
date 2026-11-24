@@ -24,6 +24,8 @@ public class JwtService {
 
     public static final String ACCESS_TOKEN_TYPE = "ACCESS TOKEN";
     public static final String REFRESH_TOKEN_TYPE = "REFRESH TOKEN";
+    public static final String ISSUER = "walletpesa-api";
+    public static final String AUDIENCE = "walletpesa-web";
 
     private final JwtProperties jwtProperties;
 
@@ -46,6 +48,8 @@ public class JwtService {
     public Claims parseToken(String token) {
         return Jwts.parser()
                 .verifyWith(getSigningKey()) // check valid signature
+                .requireIssuer(ISSUER)
+                .requireAudience(AUDIENCE)
                 .build()
                 .parseSignedClaims(token) // check expiration
                 .getPayload();
@@ -98,6 +102,8 @@ public class JwtService {
         claims.put("status", user.getStatus().name());
 
         return Jwts.builder()
+                .issuer(ISSUER)
+                .audience().add(AUDIENCE).and()
                 .subject(user.getId().toString())
                 .claims(claims)
                 .issuedAt(now)

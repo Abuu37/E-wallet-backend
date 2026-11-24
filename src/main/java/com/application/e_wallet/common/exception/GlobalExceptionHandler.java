@@ -147,6 +147,7 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(status)
+                .header("Retry-After", String.valueOf(exception.getRetryAfterSeconds()))
                 .body(errorResponse);
     }
 

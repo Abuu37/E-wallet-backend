@@ -4,6 +4,7 @@ import com.application.e_wallet.auth.config.PinResetProperties;
 import com.application.e_wallet.auth.entity.PinResetTokenEntity;
 import com.application.e_wallet.auth.repository.PinResetTokenRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
+import com.application.e_wallet.common.validation.PinPolicy;
 import com.application.e_wallet.otp.service.EmailService;
 import com.application.e_wallet.otp.service.OtpGenerator;
 import com.application.e_wallet.user.entity.UserEntity;
@@ -87,6 +88,10 @@ public class PinResetService {
     @Transactional(noRollbackFor = BadRequestException.class)
     public void resetPin(String email, String otp, String newPin) {
 
+        if (PinPolicy.isWeak(newPin)) {
+            throw new BadRequestException(PinPolicy.WEAK_PIN_MESSAGE);
+        }
+
         String normalizedEmail = email.trim().toLowerCase();
 
         UserEntity user = userRepository.findByEmail(normalizedEmail)
@@ -139,6 +144,8 @@ public class PinResetService {
         token.setUsed(true);
         token.setUsedAt(Instant.now());
         pinResetTokenRepository.save(token);
+        user.setFailedPinAttempts(0);
+        user.setUnlockRequiresOtp(false); // lockedUntil is kept: the 30-minute lock still has to run out
         user.setPinHash(pinEncoder.encode(newPin));
         userRepository.save(user);
     }

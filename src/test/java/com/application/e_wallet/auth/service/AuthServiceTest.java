@@ -56,8 +56,8 @@ class AuthServiceTest {
     void setPinResponseReadsNamesFromCustomerEntityNotUser() {
         SetPinRequest request = new SetPinRequest();
         request.setEmail("jane.doe@example.com");
-        request.setPin("1234");
-        request.setConfirmPin("1234");
+        request.setPin("4829");
+        request.setConfirmPin("4829");
 
         UUID userId = UUID.randomUUID();
         UserEntity user = UserEntity.builder()

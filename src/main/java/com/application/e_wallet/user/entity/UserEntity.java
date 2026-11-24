@@ -51,6 +51,15 @@ public class UserEntity implements UserDetails {
     @Column(name ="pin_hash")
     private String pinHash;
 
+    @Column(name = "failed_pin_attempts", nullable = false)
+    private int failedPinAttempts;
+
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+
+    @Column(name = "unlock_requires_otp", nullable = false)
+    private boolean unlockRequiresOtp;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private UserStatus status;

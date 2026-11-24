@@ -13,6 +13,7 @@ import com.application.e_wallet.user.entity.UserStatus;
 import com.application.e_wallet.user.repository.UserRepository;
 import com.application.e_wallet.common.exception.AuthenticationException;
 import com.application.e_wallet.common.exception.BadRequestException;
+import com.application.e_wallet.common.validation.PinPolicy;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.otp.entity.OtpVerificationEntity;
 import com.application.e_wallet.otp.repository.OtpVerificationRepository;
@@ -31,6 +32,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -61,6 +63,9 @@ public class AuthService {
     public UserProfileResponse setPin(SetPinRequest request) {
 
         String email = request.getEmail().trim().toLowerCase();
+        if (PinPolicy.isWeak(request.getPin())) {
+            throw new BadRequestException(PinPolicy.WEAK_PIN_MESSAGE);
+        }
         String genericErrorMessage = "PIN cannot be set for this account.";
 
         UserEntity user = userRepository.findByEmail(email)
@@ -126,11 +131,16 @@ public class AuthService {
                 .build();
     }
 
+    private static final int MAX_FAILED_PIN_ATTEMPTS = 5;
+    private static final Duration LOCK_DURATION = Duration.ofMinutes(30);
+
     /**
-     * LOGIN RESPONSE
+     * LOGIN. 5 wrong PINs lock the account for 30 minutes; after that the PIN must be
+     * reset with an emailed code (the forgot-pin flow) before sign-in works again.
+     * AuthenticationException must NOT roll back: the failed-attempt counter has to persist.
      */
-    @Transactional
-    public LoginResponse login(LoginRequest request) {
+    @Transactional(dontRollbackOn = AuthenticationException.class)
+    public AuthResult login(LoginRequest request) {
 
         String normalizedPhone = phoneNumberNormalizer.normalize(request.getPhone());
 
@@ -140,36 +150,49 @@ public class AuthService {
 
         accountStatusService.validateLoginStatus(user); // check account status
 
-        if (!pinEncoder.matches(request.getPin(), user.getPinHash())) {
+        Instant now = Instant.now();
+        if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(now)) {
+            throw new AuthenticationException("Account is locked after too many wrong PINs. Try again later.");
+        }
+        if (user.isUnlockRequiresOtp()) {
             throw new AuthenticationException(
-                    "Invalid credentials"
-            );
+                    "Your account needs a verification code to unlock. Use Forgot PIN to reset your PIN.");
         }
 
-        user.setLastLoginAt(Instant.now());
+        if (!pinEncoder.matches(request.getPin(), user.getPinHash())) {
+            user.setFailedPinAttempts(user.getFailedPinAttempts() + 1);
+            if (user.getFailedPinAttempts() >= MAX_FAILED_PIN_ATTEMPTS) {
+                user.setLockedUntil(now.plus(LOCK_DURATION));
+                user.setUnlockRequiresOtp(true);
+                user.setFailedPinAttempts(0);
+                log.warn("Account locked after repeated wrong PINs userId={}", user.getId());
+            }
+            userRepository.save(user);
+            throw new AuthenticationException("Invalid credentials");
+        }
+
+        user.setFailedPinAttempts(0);
+        user.setLastLoginAt(now);
         userRepository.save(user);
 
-        String refreshToken = issueSession(user);
+        String refreshToken = issueSession(user, UUID.randomUUID());
 
-        return buildLoginResponse(
-                user,
-                refreshToken
-        );
+        return new AuthResult(buildLoginResponse(user), refreshToken);
     }
 
     /**
-     * REFRESH TOKEN — exchanges a valid, unused refresh token for a new
-     * access/refresh pair. Rotates the refresh token on every use: the
-     * presented token's session is revoked and a brand-new session is
-     * created. If a token belonging to an already-revoked session is
-     * presented again (reuse of a rotated-out or previously logged-out
-     * token), every session for that user is revoked — that reuse is the
-     * standard signal that the refresh token has been stolen.
+     * REFRESH TOKEN — rotates on every use inside one session family. Presenting an
+     * already-rotated (revoked) token is treated as theft and revokes the whole family.
+     * The exception must not roll the revocation back.
      */
-    @Transactional
-    public LoginResponse refreshToken(String refreshToken) {
+    @Transactional(dontRollbackOn = AuthenticationException.class)
+    public AuthResult refreshToken(String refreshToken) {
 
         String invalidTokenMessage = "Invalid refresh token";
+
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new AuthenticationException(invalidTokenMessage);
+        }
 
         try {
             if (!JwtService.REFRESH_TOKEN_TYPE.equals(jwtService.extractTokenType(refreshToken))) {
@@ -185,12 +208,9 @@ public class AuthService {
                 .orElseThrow(() -> new AuthenticationException(invalidTokenMessage));
 
         if (session.isRevoked()) {
-            // Reuse of a token we already rotated away from (or logged out) —
-            // treat it as theft and kill every session for this user.
-            userSessionRepository.deleteAllByUserId(session.getUser().getId());
-            throw new AuthenticationException(
-                    "Refresh token has already been used. All sessions have been revoked; please log in again."
-            );
+            userSessionRepository.revokeFamily(session.getFamilyId(), OffsetDateTime.now());
+            log.warn("Refresh token reuse detected; session family revoked userId={}", session.getUser().getId());
+            throw new AuthenticationException("Session is no longer valid. Please log in again.");
         }
 
         if (session.getExpiresAt().isBefore(OffsetDateTime.now())) {
@@ -198,21 +218,23 @@ public class AuthService {
         }
 
         UserEntity user = session.getUser();
+        accountStatusService.validateLoginStatus(user);
 
         session.setRevoked(true);
         session.setRevokedAt(OffsetDateTime.now());
         userSessionRepository.save(session);
 
-        String newRefreshToken = issueSession(user);
+        String newRefreshToken = issueSession(user, session.getFamilyId());
 
-        return buildLoginResponse(user, newRefreshToken);
+        return new AuthResult(buildLoginResponse(user), newRefreshToken);
     }
 
-    private String issueSession(UserEntity user) {
+    private String issueSession(UserEntity user, UUID familyId) {
         String refreshToken = jwtService.generateRefreshToken(user);
 
         UserSessionEntity session = UserSessionEntity.builder()
                 .user(user)
+                .familyId(familyId)
                 .refreshTokenHash(refreshTokenHashService.hash(refreshToken))
                 .expiresAt(OffsetDateTime.now().plus(Duration.ofMillis(jwtProperties.getRefreshTokenExpiration())))
                 .revoked(false)
@@ -223,7 +245,7 @@ public class AuthService {
         return refreshToken;
     }
 
-    private LoginResponse buildLoginResponse(UserEntity user, String refreshToken) {
+    private LoginResponse buildLoginResponse(UserEntity user) {
         String accessToken = jwtService.generateAccessToken(user);
 
         List<String> roles = List.of(user.getRole().getName());
@@ -235,7 +257,6 @@ public class AuthService {
 
         return LoginResponse.builder()
                 .accessToken(accessToken)
-                .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .roles(roles)
                 .permissions(permissions)
@@ -285,6 +306,9 @@ public class AuthService {
                     "New PIN must be different from current PIN"
             );
         }
+        if (PinPolicy.isWeak(request.getNewPin())) {
+            throw new BadRequestException(PinPolicy.WEAK_PIN_MESSAGE);
+        }
         userEntity.setPinHash( pinEncoder.encode(request.getNewPin()));
 
         if (userEntity.getStatus() == UserStatus.PIN_CHANGE_REQUIRED) {
@@ -295,27 +319,13 @@ public class AuthService {
     }
 
     //================= logout ====================
+    /** Ends the whole session family for the presented cookie token. Unknown tokens are ignored. */
     @Transactional
-   public void logout(String email, String refreshToken){
-
-        UserEntity user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new AuthenticationException("User account not found"));
-
-        String tokenHash = refreshTokenHashService.hash(refreshToken);
-
-        UserSessionEntity session = userSessionRepository
-                .findByRefreshTokenHash(tokenHash)
-                .orElseThrow(() -> new AuthenticationException("Invalid refresh token"));
-
-        if (!session.getUser().getId().equals(user.getId())) {
-            throw new AuthenticationException("Invalid refresh token");
+    public void logout(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
         }
-        if (session.isRevoked()) {
-            throw new AuthenticationException("Session is revoked");
-        }
-        session.setRevoked(true);
-        session.setRevokedAt(OffsetDateTime.now());
-        userSessionRepository.save(session);
-
-   }
+        userSessionRepository.findByRefreshTokenHash(refreshTokenHashService.hash(refreshToken))
+                .ifPresent(session -> userSessionRepository.revokeFamily(session.getFamilyId(), OffsetDateTime.now()));
+    }
 }
