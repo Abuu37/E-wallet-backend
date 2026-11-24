@@ -3,10 +3,12 @@ package com.application.e_wallet.treasury.controller;
 import com.application.e_wallet.common.dto.ApiResponse;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
 import com.application.e_wallet.treasury.dto.CommissionTopupRequest;
-import com.application.e_wallet.treasury.dto.CommissionTopupResponse;
 import com.application.e_wallet.treasury.dto.MintRequest;
 import com.application.e_wallet.treasury.dto.TransactionJournalResponse;
 import com.application.e_wallet.treasury.dto.TreasuryOverviewResponse;
+import com.application.e_wallet.treasury.dto.TreasuryRequestResponse;
+import com.application.e_wallet.treasury.entity.RequestType;
+import com.application.e_wallet.treasury.service.TreasuryRequestService;
 import com.application.e_wallet.treasury.service.TreasuryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,83 +24,60 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
 
-// direct admin bypass endpoint for them.
+/**
+ * Mint and commission top-up are maker-checker: these endpoints only RAISE a request. A different
+ * staff member then approves it through /treasury/requests/{id}/approve, which posts the journal.
+ */
 @RestController
 @RequestMapping("/api/v1/treasury")
 @RequiredArgsConstructor
 public class TreasuryController {
 
     private final TreasuryService treasuryService;
+    private final TreasuryRequestService treasuryRequestService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('COMPANY_WALLET_VIEW')")
     public ResponseEntity<ApiResponse<TreasuryOverviewResponse>> getOverview(Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        TreasuryOverviewResponse response = treasuryService.getOverview(principal.email());
-
-        ApiResponse<TreasuryOverviewResponse> body = ApiResponse.<TreasuryOverviewResponse>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("Treasury overview retrieved successfully")
-                .data(response)
-                .build();
-
-        return ResponseEntity.ok(body);
+        return ResponseEntity.ok(ok("Treasury overview retrieved successfully", treasuryService.getOverview(principal.email())));
     }
 
     @GetMapping("/journal")
     @PreAuthorize("hasAuthority('LEDGER_VIEW')")
     public ResponseEntity<ApiResponse<List<TransactionJournalResponse>>> getJournal() {
-        List<TransactionJournalResponse> response = treasuryService.getJournalHistory();
-
-        ApiResponse<List<TransactionJournalResponse>> body = ApiResponse.<List<TransactionJournalResponse>>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("Transaction journal retrieved successfully")
-                .data(response)
-                .build();
-
-        return ResponseEntity.ok(body);
+        return ResponseEntity.ok(ok("Transaction journal retrieved successfully", treasuryService.getJournalHistory()));
     }
 
     @PostMapping("/mint")
     @PreAuthorize("hasAuthority('FLOAT_MANAGE')")
-    public ResponseEntity<ApiResponse<TreasuryOverviewResponse>> mint(
+    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> requestMint(
             @Valid @RequestBody MintRequest request, Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        UUID adminUserId = principal.userId();
-
-        treasuryService.mint(request, adminUserId);
-        TreasuryOverviewResponse response = treasuryService.getOverview(principal.email());
-
-        ApiResponse<TreasuryOverviewResponse> body = ApiResponse.<TreasuryOverviewResponse>builder()
-                .timestamp(Instant.now())
-                .status(HttpStatus.OK.value())
-                .message("Float minted successfully int Company Master Account")
-                .data(response)
-                .build();
-
-        return ResponseEntity.ok(body);
+        TreasuryRequestResponse response = treasuryRequestService.createStaffRequest(
+                principal.userId(), RequestType.MINT, request.amount(), request.description());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ok("Mint request submitted. Another staff member must approve it.", response));
     }
 
     @PostMapping("/commission/topup")
     @PreAuthorize("hasAuthority('COMMISSION_MANAGE')")
-    public ResponseEntity<ApiResponse<CommissionTopupResponse>> topupCommission(@Valid @RequestBody CommissionTopupRequest request, Authentication authentication) {
+    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> requestCommissionTopup(
+            @Valid @RequestBody CommissionTopupRequest request, Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
+        TreasuryRequestResponse response = treasuryRequestService.createStaffRequest(
+                principal.userId(), RequestType.COMMISSION_TOPUP, request.amount(), request.description());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ok("Commission top-up request submitted. Another staff member must approve it.", response));
+    }
 
-        CommissionTopupResponse response = treasuryService.fundCommission(
-                request.amount(), request.description(), principal.userId()
-        );
-
-        ApiResponse<CommissionTopupResponse> body = ApiResponse.<CommissionTopupResponse>builder()
+    private static <T> ApiResponse<T> ok(String message, T data) {
+        return ApiResponse.<T>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Commission pool funded successfully from Company Master Wallet.")
-                .data(response)
+                .message(message)
+                .data(data)
                 .build();
-
-        return ResponseEntity.ok(body);
     }
 }

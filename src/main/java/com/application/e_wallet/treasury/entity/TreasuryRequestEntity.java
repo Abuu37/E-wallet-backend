@@ -41,8 +41,8 @@ public class TreasuryRequestEntity {
     @Column(nullable = false, unique = true, updatable = false)
     private String requestRef;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "agent_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "agent_id")
     private AgentEntity agent;
 
     @Column(nullable = false, precision = 19, scale = 2)
@@ -62,6 +62,10 @@ public class TreasuryRequestEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "decided_by")
     private UserEntity decidedBy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "requested_by")
+    private UserEntity requestedBy;
 
     @Column(name = "decision_note", length = 500)
     private String decisionNote;

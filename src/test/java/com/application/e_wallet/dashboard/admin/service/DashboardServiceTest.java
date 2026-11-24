@@ -277,6 +277,20 @@ class DashboardServiceTest {
     }
 
     @Test
+    void buildActionAlertsIgnoresStaffRaisedRequestsThatHaveNoAgent() {
+        when(treasuryRequestRepository.countByStatus(RequestStatus.PENDING)).thenReturn(1L);
+        when(treasuryRequestRepository.sumAmountByStatus(RequestStatus.PENDING)).thenReturn(new BigDecimal("5000000.00"));
+        TreasuryRequestEntity mint = TreasuryRequestEntity.builder()
+                .id(UUID.randomUUID()).amount(new BigDecimal("5000000.00")).requestType(RequestType.MINT)
+                .status(RequestStatus.PENDING).createdAt(OffsetDateTime.now()).build();
+        when(treasuryRequestRepository.findTop10ByStatusOrderByCreatedAtDesc(RequestStatus.PENDING)).thenReturn(List.of(mint));
+
+        ActionAlerts result = dashboardService.buildActionAlerts();
+
+        assertThat(result.pendingFloatRequests().recentRequests()).isEmpty();
+    }
+
+    @Test
     void buildActionAlertsPassesLowThresholdToRepositoryQuery() {
         stubNoPendingRequests();
         when(agentRepository.findLowFloatAgents(WalletType.AGENT_FLOAT, FloatHealth.LOW_THRESHOLD, AgentStatus.ACTIVE))

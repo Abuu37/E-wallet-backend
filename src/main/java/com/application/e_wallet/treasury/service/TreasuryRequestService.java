@@ -4,6 +4,7 @@ import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.treasury.dto.RequestStatusSummary;
+import com.application.e_wallet.treasury.dto.MintRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestCreateRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestDecisionRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestListResponse;
@@ -22,6 +23,7 @@ import com.application.e_wallet.wallet.entity.WalletType;
 import com.application.e_wallet.wallet.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -138,11 +140,49 @@ public class TreasuryRequestService {
 
         TreasuryRequestEntity treasuryRequest = findUnlocked(requestId);
 
-        if (!canManage && !treasuryRequest.getAgent().getUser().getId().equals(callerUserId)) {
+        if (!canManage && (treasuryRequest.getAgent() == null || !treasuryRequest.getAgent().getUser().getId().equals(callerUserId))) {
             throw new BadRequestException("Treasury request not found");
         }
 
         return toResponse(treasuryRequest);
+    }
+
+    //=================== Staff creates a mint or commission request (maker) ==================//
+    @Transactional
+    public TreasuryRequestResponse createStaffRequest(UUID requesterUserId, RequestType type, BigDecimal amount, String description) {
+        if (type != RequestType.MINT && type != RequestType.COMMISSION_TOPUP) {
+            throw new BadRequestException("Only mint and commission top-up requests are created by staff");
+        }
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Amount must be greater than zero");
+        }
+        if (amount.stripTrailingZeros().scale() > 2) {
+            throw new BadRequestException("Amount must have at most 2 decimal places");
+        }
+        if (description == null || description.isBlank()) {
+            throw new BadRequestException("A description is required");
+        }
+        UserEntity requester = resolveAdmin(requesterUserId);
+        TreasuryRequestEntity saved = treasuryRequestRepository.save(TreasuryRequestEntity.builder()
+                .requestType(type)
+                .amount(amount)
+                .reason(description.trim())
+                .requestedBy(requester)
+                .status(RequestStatus.PENDING)
+                .build());
+        return toResponse(saved);
+    }
+
+    private static boolean needsSecondStaff(TreasuryRequestEntity request) {
+        return request.getRequestType() == RequestType.MINT || request.getRequestType() == RequestType.COMMISSION_TOPUP;
+    }
+
+    /** Maker-checker: whoever raised a mint or commission request can neither approve nor reject it. */
+    private static void requireDifferentStaff(TreasuryRequestEntity request, UUID deciderUserId) {
+        if (needsSecondStaff(request) && request.getRequestedBy() != null
+                && request.getRequestedBy().getId().equals(deciderUserId)) {
+            throw new AccessDeniedException("You requested this. Another staff member must approve or reject it.");
+        }
     }
 
     //======================== ADMIN APPROVES TREASURY REQUEST ================ //
@@ -154,10 +194,15 @@ public class TreasuryRequestService {
             throw new BadRequestException("Only a pending treasury request can be approved");
         }
 
+        requireDifferentStaff(treasuryRequest, adminUserId);
         UserEntity admin = resolveAdmin(adminUserId);
 
         String description = "Treasury request " + treasuryRequest.getRequestRef() + " approved";
-        if (treasuryRequest.getRequestType() == RequestType.TOPUP) {
+        if (treasuryRequest.getRequestType() == RequestType.MINT) {
+            treasuryService.mint(new MintRequest(treasuryRequest.getAmount(), treasuryRequest.getReason()), adminUserId);
+        } else if (treasuryRequest.getRequestType() == RequestType.COMMISSION_TOPUP) {
+            treasuryService.fundCommission(treasuryRequest.getAmount(), treasuryRequest.getReason(), adminUserId);
+        } else if (treasuryRequest.getRequestType() == RequestType.TOPUP) {
             treasuryService.topup(treasuryRequest.getAgent().getId(), treasuryRequest.getAmount(), description, adminUserId);
         } else {
             treasuryService.withdraw(treasuryRequest.getAgent().getId(), treasuryRequest.getAmount(), description, adminUserId);
@@ -187,6 +232,7 @@ public class TreasuryRequestService {
         if (request.reason() == null || request.reason().isBlank()) {
             throw new BadRequestException("Rejection reason is required");
         }
+        requireDifferentStaff(treasuryRequest, adminUserId);
 
         UserEntity admin = resolveAdmin(adminUserId);
 
@@ -219,23 +265,24 @@ public class TreasuryRequestService {
 
     private TreasuryRequestResponse toResponse(TreasuryRequestEntity treasuryRequest) {
         AgentEntity agent = treasuryRequest.getAgent();
-        UserEntity user = agent.getUser();
+        UserEntity user = agent != null ? agent.getUser() : null;
         UserEntity decidedBy = treasuryRequest.getDecidedBy();
 
-        WalletEntity wallet = walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_FLOAT)
+        WalletEntity wallet = user == null ? null : walletRepository.findByUserIdAndWalletType(user.getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() -> new IllegalStateException("Agent float wallet not found"));
+        UserEntity requestedBy = treasuryRequest.getRequestedBy();
 
         return new TreasuryRequestResponse(
                 treasuryRequest.getId(),
                 treasuryRequest.getRequestRef(),
                 treasuryRequest.getRequestType().name(),
-                agent.getId(),
-                agent.getAgentNumber(),
-                fullName(agent.getFirstName(), agent.getMiddleName(), agent.getLastName()),
-                agent.getRegion().getName(),
-                agent.getDistrict().getName(),
-                user.getPhone(),
-                wallet.getAccountNumber(),
+                agent != null ? agent.getId() : null,
+                agent != null ? agent.getAgentNumber() : null,
+                agent != null ? fullName(agent.getFirstName(), agent.getMiddleName(), agent.getLastName()) : null,
+                agent != null ? agent.getRegion().getName() : null,
+                agent != null ? agent.getDistrict().getName() : null,
+                user != null ? user.getPhone() : null,
+                wallet != null ? wallet.getAccountNumber() : null,
                 treasuryRequest.getAmount(),
                 treasuryRequest.getReason(),
                 treasuryRequest.getStatus().name(),
@@ -243,7 +290,9 @@ public class TreasuryRequestService {
                 treasuryRequest.getDecisionNote(),
                 treasuryRequest.getDecidedAt(),
                 treasuryRequest.getCreatedAt(),
-                treasuryRequest.getExternalReference()
+                treasuryRequest.getExternalReference(),
+                requestedBy != null ? requestedBy.getId() : null,
+                requestedBy != null ? decidedByName(requestedBy) : null
         );
     }
 

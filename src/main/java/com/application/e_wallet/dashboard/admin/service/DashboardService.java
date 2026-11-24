@@ -133,6 +133,9 @@ public class DashboardService {
 
         List<PendingFloatRequestItem> recentRequests = new ArrayList<>();
         for (TreasuryRequestEntity request : recent) {
+            if (request.getAgent() == null) {
+                continue; // staff-raised mint and commission requests are reviewed in Treasury, not in the agent float panel
+            }
             recentRequests.add(toPendingFloatRequestItem(request));
         }
 
