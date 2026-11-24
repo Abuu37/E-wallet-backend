@@ -62,7 +62,7 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
     List<TransactionEntity> findByStatusAndCreatedAtBetween(String status, OffsetDateTime start, OffsetDateTime end);
 
     // Unscoped by status or date - the admin dashboard's recent-activity feed, across every
-    // transaction type (CASH_IN, CASH_OUT, TOPUP_STRIPE, ...), so admins see pending/failed
+    // transaction type (CASH_IN, CASH_OUT, ...), so admins see pending/failed
     // attempts too, not just completed ones. JOIN FETCH avoids an N+1 lazy-load per row for
     // the sender/receiver wallet account name and number the dashboard also displays.
     @Query("""
@@ -110,7 +110,7 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
     long countByWalletIdIn(@Param("walletIds") List<UUID> walletIds);
 
     // Money received: the full amount, no fee deducted on the receiving side today.
-    // Restricted to COMPLETED rows only - since TOPUP_STRIPE introduced PENDING/FAILED rows
+    // Restricted to COMPLETED rows only - since top-ups can be PENDING/FAILED
     // (every prior transaction type completed synchronously), an abandoned/expired checkout
     // session must not be counted as real money in the customer's summary.
     @Query("""
@@ -155,7 +155,7 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
     long countByWalletIdAndCreatedAtBetween(
             @Param("walletId") UUID walletId, @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
 
-    // In-progress incoming activity (e.g. a Stripe top-up the customer paid for but whose
+    // In-progress incoming activity (e.g. a bank top-up the customer started but whose
     // webhook hasn't landed yet) - the customer is always the receiver on these, never the sender.
     @Query("""
             SELECT COUNT(t) FROM TransactionEntity t

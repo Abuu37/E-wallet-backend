@@ -7,6 +7,5 @@ public enum LedgerTransactionType {
     AGENT_WITHDRAW,
     TOPUP_COMMISSION,
     CASH_IN,
-    CASH_OUT,
-    TOPUP_STRIPE
+    CASH_OUT
 }
