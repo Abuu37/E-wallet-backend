@@ -13,6 +13,7 @@ public record AgentSummaryResponse(
         String districtName,
         String status,
         AgentWalletSummary floatAccount,
-        AgentWalletSummary commissionAccount
+        AgentWalletSummary commissionAccount,
+        java.time.OffsetDateTime createdAt
 ) {
 }

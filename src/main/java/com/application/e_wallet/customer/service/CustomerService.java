@@ -253,7 +253,8 @@ public class CustomerService {
                 customer.getPhoneNumber(),
                 customer.getEmail(),
                 customer.getStatus().name(),
-                wallet != null ? toWalletSummary(wallet) : null);
+                wallet != null ? toWalletSummary(wallet) : null,
+                customer.getCreatedAt());
     }
 
     private CustomerWalletSummary toWalletSummary(WalletEntity wallet) {

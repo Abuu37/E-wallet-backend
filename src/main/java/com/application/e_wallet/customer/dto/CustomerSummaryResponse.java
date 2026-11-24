@@ -8,6 +8,7 @@ public record CustomerSummaryResponse(
         String phoneNumber,
         String email,
         String status,
-        CustomerWalletSummary wallet
+        CustomerWalletSummary wallet,
+        java.time.OffsetDateTime createdAt
 ) {
 }

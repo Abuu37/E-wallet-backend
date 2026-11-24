@@ -381,7 +381,8 @@ public class    AgentService {
                 agent.getDistrict().getName(),
                 agent.getAgentStatus().name(),
                 toWalletSummary(floatWallet),
-                toWalletSummary(commissionWallet)
+                toWalletSummary(commissionWallet),
+                agent.getCreatedAt()
         );
     }
 
