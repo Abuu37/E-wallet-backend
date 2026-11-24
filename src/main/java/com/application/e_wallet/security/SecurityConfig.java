@@ -80,6 +80,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/csrf",
+                                "/api/v1/webhooks/plaid",
                                 "/api/v1/auth/forgot-pin",
                                 "/api/v1/auth/reset-pin",
                                 "/api/v1/otp/verify",

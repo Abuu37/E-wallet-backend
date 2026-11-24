@@ -17,6 +17,7 @@ public record CustomerProfileResponse(
         CustomerTransactionSummary summary,
         CustomerWalletSummary wallet,
         List<CustomerTransactionItem> transactions,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        String kycStatus
 ) {
 }

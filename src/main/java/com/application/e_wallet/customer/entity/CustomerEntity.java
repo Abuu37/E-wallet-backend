@@ -69,6 +69,17 @@ public class CustomerEntity {
     @Column(name = "address", nullable = false, length = 255)
     private String address;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kyc_status", nullable = false, length = 20)
+    @Builder.Default
+    private com.application.e_wallet.kyc.entity.KycStatus kycStatus = com.application.e_wallet.kyc.entity.KycStatus.NOT_STARTED;
+
+    @Column(name = "kyc_provider_ref", length = 100)
+    private String kycProviderRef;
+
+    @Column(name = "kyc_verified_at")
+    private OffsetDateTime kycVerifiedAt;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 

@@ -151,6 +151,22 @@ public class GlobalExceptionHandler {
                 .body(errorResponse);
     }
 
+    //============ Outside provider (identity, bank) failed ============
+    @ExceptionHandler(ProviderUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleProviderUnavailable(ProviderUnavailableException exception, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.BAD_GATEWAY;
+
+        ErrorResponse response = ErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .message(exception.getMessage())
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(status).body(response);
+    }
+
     //============ Authentication Handler ============
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException exception, HttpServletRequest request) {

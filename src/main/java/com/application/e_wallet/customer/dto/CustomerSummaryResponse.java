@@ -9,6 +9,7 @@ public record CustomerSummaryResponse(
         String email,
         String status,
         CustomerWalletSummary wallet,
-        java.time.OffsetDateTime createdAt
+        java.time.OffsetDateTime createdAt,
+        String kycStatus
 ) {
 }

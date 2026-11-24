@@ -239,7 +239,8 @@ public class CustomerService {
                 toTransactionSummary(wallet),
                 toWalletSummary(wallet),
                 toTransactionItems(wallet.getId(), recent),
-                customer.getCreatedAt());
+                customer.getCreatedAt(),
+                customer.getKycStatus().name());
     }
 
     private CustomerSummaryResponse toSummaryResponse(CustomerEntity customer) {
@@ -254,7 +255,8 @@ public class CustomerService {
                 customer.getEmail(),
                 customer.getStatus().name(),
                 wallet != null ? toWalletSummary(wallet) : null,
-                customer.getCreatedAt());
+                customer.getCreatedAt(),
+                customer.getKycStatus().name());
     }
 
     private CustomerWalletSummary toWalletSummary(WalletEntity wallet) {
