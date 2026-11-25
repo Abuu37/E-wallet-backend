@@ -122,6 +122,54 @@ gantt
 
 ## Design
 
+### Money movement model *(agreed 25 Nov, your answers)*
+
+**One rule:** every shilling in a wallet is backed by a real shilling in WalletPesa's escrow (trust) bank account, as Tanzania's e-money rules require. Wallet money is created only when real money arrives in escrow, and leaves only when escrow pays it out. A daily check confirms that **all wallet balances added together = escrow balance**.
+
+Who does what:
+- **WalletPesa's ledger** records who owns what inside the wallet. It is the record of truth.
+- **Plaid (Sandbox)** plays "the bank side" in the demo. It checks identity (IDV), reads linked bank balances (Auth + Balance), and, for every bank movement, the backend posts the matching line on the Sandbox account with `/sandbox/transactions/create`: a debit (positive amount) when money leaves the user's bank, a credit (negative amount) when it arrives. The viewer sees the bank go down or up by the same amount the wallet goes up or down.
+- **Cash** moves by hand between customer and agent. Neither system sees it; the system sees the float that moves to balance it.
+
+**Customer**
+
+| Movement | Ledger | Escrow | Plaid shows | Approval | Fee |
+|---|---|---|---|---|---|
+| Add money from own bank | ESCROW_BANK → CUSTOMER_MAIN | ↑ | −amount on the bank | none | 0 |
+| Cash-in at agent | AGENT_FLOAT → CUSTOMER_MAIN, plus 200 commission | no change | nothing | none | 0 |
+| Send wallet to wallet (by phone, WalletPesa users) | CUSTOMER_MAIN → CUSTOMER_MAIN | no change | nothing | none | per tariff |
+| Withdraw at agent | CUSTOMER_MAIN → AGENT_FLOAT + REVENUE, plus 200 commission | no change | nothing | none | 300 |
+| Withdraw to own bank | CUSTOMER_MAIN → ESCROW_BANK (payout) + REVENUE | ↓ | +amount on the bank | none | 1,000 |
+
+**Agent** (no fees for agents)
+
+| Movement | Ledger | Escrow | Plaid shows | Approval |
+|---|---|---|---|---|
+| Top up float from own bank (Path A) | ESCROW_BANK → AGENT_FLOAT | ↑ | −amount on the agent's bank | none, cap **5,000,000 TZS a day** |
+| Request float: deposit at the bank into escrow with reference = agent ID, upload slip (Path B) | ESCROW_BANK → AGENT_FLOAT | ↑ | nothing | one staff member |
+| Withdraw float to own bank | AGENT_FLOAT → ESCROW_BANK (payout) | ↓ | +amount on the agent's bank | none, within limits |
+| Withdraw commission to own bank | AGENT_COMMISSION → ESCROW_BANK (payout) | ↓ | +amount on the agent's bank | none |
+
+**Staff and system**
+
+| Movement | Ledger | Escrow | Approval |
+|---|---|---|---|
+| Approve a float request (Path B) | ESCROW_BANK → AGENT_FLOAT | ↑ | one staff member |
+| Refill the commission pool | REVENUE → COMMISSION | no change | one finance staff member |
+| Sweep revenue to the company bank | REVENUE → ESCROW_BANK (payout) | ↓ | two staff members |
+| Reverse a wrong transaction (new opposite entry, never a delete) | e.g. receiver → sender | no change | two staff members |
+| Treasury adjustment (corrections only, e.g. a bank charge on escrow, or the company paying in its own money) | ESCROW_BANK ↔ REVENUE | depends | two staff members |
+| Daily reconciliation | no movement | – | alert on mismatch |
+
+Rules that go with these tables:
+- **No Company master wallet** *(26 Nov, your decision)*. Float goes straight from escrow, so `COMPANY_MASTER_ACCOUNT`, the `mint` endpoint and its maker-checker flow are removed from every flow and screen. The commission pool is refilled from REVENUE; corrections go ESCROW_BANK ↔ REVENUE. `COMPANY_MASTER_ACCOUNT` and `MINT_FLOAT` stay in the enums only so old rows still read; the dev database is rebuilt anyway.
+- **Own bank only.** Bank withdrawals and bank top-ups use a bank linked through Plaid whose account-holder name matches the customer's verified name, or the agent's business name (Plaid Identity). This stops a thief who has the PIN from emptying a wallet into someone else's bank.
+- **Fees and commissions are automatic.** Each fee goes to REVENUE and each 200 commission goes from the COMMISSION pool to the agent's commission wallet as part of the transaction, with no approval. Finance refills the pool from time to time (one move), and the staff Overview warns when the pool is low. If the pool is empty, the customer's transaction still goes through: the commission is recorded as owed and paid automatically after the next refill *(my call, to confirm)*.
+- **Path A vs Path B.** In Path A, WalletPesa pulls the money from the agent's linked bank, so the agent never types the escrow account number. In Path B, the agent pushes the money from outside (bank counter or an unlinked bank). The screen shows the escrow bank, account name, account number and the reference `AG-xxxxx`, and a staff member matches the slip with the escrow statement. Real-world equivalents: self-service bank float purchase (A) and a deposit checked by hand (B).
+- **Withdraw to bank status.** It shows *Processing*, then *Completed*. If the bank rejects it, the amount and the fee go back to the wallet automatically, and an SMS says so.
+- **A message for every movement: email for now, SMS later** *(26 Nov)*. The full list of message points and their template keys is in `docs/superpowers/sms-notifications.md` (27 points). They all go through one `NotificationSender` interface; today's implementation sends **email** with the existing email setup, and an SMS implementation replaces it when the provider is integrated, with no change to callers. Screens say "email" until then.
+- **Parked for later** (`docs/superpowers/later.md`): send to other mobile networks (M-Pesa, Mixx by Yas, Airtel Money, HaloPesa) and to someone else's bank account, both through TIPS with a Demo "TIPS simulator"; super-agents selling float (proposed). Until then, a phone number that isn't on WalletPesa shows "This number isn't on WalletPesa yet. Sending to other networks is coming soon."
+
 ### Phase 0 — Connect and harden
 
 **0.1 Withdrawal without PIN sharing.** Replace `customerPin` in the agent's cash-out request.
@@ -196,6 +244,13 @@ flowchart TD
 - `POST /api/v1/transactions/transfer` (customer → customer): PIN, idempotency key, limits (below); journal debits sender amount + fee, credits receiver amount and revenue fee. New `TransactionType.TRANSFER` and `LedgerTransactionType.TRANSFER`; a tariff band seeded for it.
 - `GET /api/v1/transactions/me` (paged, filter by type/date) and `GET /api/v1/transactions/{referenceNo}` (receipt; only parties to it may read it).
 - Customer web: home (balance, recent activity, quick actions), send flow (recipient → amount with fee → PIN → receipt), history, receipt share, withdraw (0.1).
+- **Sign-in and registration without a username** *(your decision, 25 Nov)*. Everyone signs in with **phone number + 4-digit PIN** on the web app's one sign-in page, `/login`; the frontend sends each role to its existing home (customer `/app`, agent `/agent`, staff `/console`; *26 Nov: keep today's routes and shells, no renaming*). Customer registration asks for phone, a verification code (by email for now),  names, NIDA, date of birth, email, address and PIN, **no username**: `CustomerRegistrationRequest` drops `username`, and the backend fills the unique `users.username` column with the customer's reference so the constraint still holds. The same goes for agents and staff: `AgentCreationRequest` and `StaffCreationRequest` drop `username`, staff onboard them with their phone number, and the backend fills `users.username` from the agent ID (`AG-10234`) or staff number (`ST-0005`). The one-time PIN for a new agent or staff member goes **by email for now**, as today, and by SMS once the provider is integrated *(26 Nov)*; the onboarding forms keep the email field as required.
+- **Forgot PIN: customers by phone + NIDA, agents and staff by admin reset** *(25 Nov; channel and staff rule 26 Nov)*.
+  - **Customers** use web `/forgot-pin` and the app in three steps: (1) phone number + last 4 digits of the NIDA number, (2) a 6-digit code (5 minutes, 5 tries, resend after 60 s) sent **by email to the address on file for now**, by SMS later, (3) a new 4-digit PIN with the same rules as registration. On success every other session is revoked and a message confirms the reset.
+  - Step 1 **always answers the same way**, whether or not the pair matches: "If these details match an account, we've sent a code to the email on file." The email is not shown, masked or not, so the screen can't be used to find out who has a wallet *(26 Nov, your assistant's catch)*.
+  - Endpoints change from today's `{email}` versions to `POST /auth/forgot-pin {phone, nidaLast4}`, `POST /otp/verify {phone, otp}`, `POST /auth/reset-pin {phone, otp, newPin}`; the sending stays the existing email code.
+  - **Agents and staff** have no NIDA on file, so they don't self-serve. The forgot-PIN page tells them: "Agents and staff: ask your administrator to reset your PIN." An admin (for agents, operations staff with `AGENT_MANAGE`) clicks **Reset PIN** on the record: a new one-time PIN goes by email, `mustChangePin` is set, every session is revoked, and on next sign-in they go to the set-your-own-PIN screen. Each reset is written to `audit_logs`.
+- **First sign-in with a one-time PIN** *(25 Nov)*. Agents and staff sign in at `/login` with their phone and the one-time PIN. When the login response has `mustChangePin: true`, the frontend goes straight to **Set your own PIN** (today's `/change-pin` route), never the dashboard; the backend already refuses everything except `/auth/change-pin`, `/auth/logout` and `/auth/status` until then. The screen asks for a new PIN and its confirmation (4 digits, not all the same, not a sequence, different from the one-time PIN). `POST /auth/change-pin {currentPin, newPin}` sets the account ACTIVE and revokes every session, so the next screen says *PIN saved* and returns to `/login`. Phase 0 fixes: the frontend must read `mustChangePin`; the controller looks the user up by email and must use the user ID from the token instead, with a test. (Checked 26 Nov: `getPassword()` returns `pinHash`, so both PIN checks already use the same field.) The one-time PIN goes by email for now.
 - **Limits, tiered by Plaid KYC** *(tiering your answer; amounts my call, demo values)*: enforced in one shared `LimitService` for transfer, withdraw and bank top-up, with values read from configuration so they can change without code.
 
   | Tier | When | Per transaction | Daily total | Max balance |
@@ -292,7 +347,9 @@ stateDiagram-v2
 
 1. Customer links a Sandbox bank through Plaid Link (`products: ["auth"]`). The backend exchanges the `public_token` for an `access_token` and stores it encrypted.
 2. Customer enters an amount. The backend checks the linked account's balance (`/accounts/balance/get`), then posts a journal **ESCROW_BANK → CUSTOMER_MAIN**, as if the bank deposit had settled into the company's escrow account. New `LedgerTransactionType.BANK_TOPUP` and `TransactionType.BANK_TOPUP`.
-3. The screen and the receipt label it *Demo: Plaid Sandbox*, so nobody mistakes it for real money.
+3. The backend posts the matching **−amount debit** on the Sandbox account with `/sandbox/transactions/create` *(25 Nov)*, so the bank side shows the money leaving. A failure here is logged and retried; it never undoes the wallet credit. `/sandbox/transactions/create` works on any Sandbox Item (checked against Plaid's docs, 26 Nov), so linking with `user_good` is fine.
+   - **Sandbox name-match override** *(26 Nov)*: Sandbox banks carry Plaid's test names, which never match a WalletPesa customer, so with `PLAID_ENV=sandbox` and `plaid.sandbox.skipNameMatch=true` the own-bank check is skipped and the screen says "Demo: name check skipped in Sandbox". The override can't be switched on outside Sandbox.
+4. The screen and the receipt label it *Demo: Plaid Sandbox*, so nobody mistakes it for real money. An SMS confirms the top-up (C1).
 
 ```mermaid
 sequenceDiagram
@@ -314,8 +371,16 @@ sequenceDiagram
     UI->>API: POST /api/v1/transactions/bank-topup + Idempotency-Key
     API->>P: /accounts/balance/get
     API->>L: postJournal(BANK_TOPUP: ESCROW_BANK DR, CUSTOMER_MAIN CR)
+    API->>P: /sandbox/transactions/create (debit 50,000 on the bank)
     API-->>UI: receipt marked "Demo: Plaid Sandbox"
 ```
+
+**Withdraw to own bank (demo)** *(25 Nov, your answer: option A, own bank only)*
+
+1. Customer picks a linked bank whose name matches their verified name, enters an amount, sees the fee (1,000, from the tariff) and the total, and confirms with their PIN. Limits as for every payment.
+2. `POST /api/v1/transactions/bank-withdraw` + Idempotency-Key posts **CUSTOMER_MAIN DR amount + fee, ESCROW_BANK CR amount (payout), REVENUE CR fee**, with status `PENDING`. New `TransactionType.BANK_WITHDRAWAL` and `LedgerTransactionType.BANK_WITHDRAW`.
+3. The backend posts a **+amount credit** on the Sandbox account (negative amount in `/sandbox/transactions/create`) and marks the transaction `COMPLETED`. If it fails, a reversal journal returns the amount and fee to the wallet, and the transaction is marked `FAILED` (SMS C7).
+4. The same endpoint shape serves agents: `POST /api/v1/agent/float/bank-withdraw` and `POST /api/v1/agent/commission/bank-withdraw` (Phase 2), with no fee.
 
 **Data changes (new migrations)**
 
@@ -330,21 +395,44 @@ sequenceDiagram
 
 ### Phase 2 — Agent experience
 
-Agent portal on the existing endpoints: cash-in, confirmed-withdrawal queue, float balance with low-float alert, float request with status timeline, daily summary and commission. Agent locator for customers by region → district.
+Agent portal on the existing endpoints: cash-in, confirmed-withdrawal queue, float balance with low-float alert, float request with status timeline, daily summary, commission and transaction history. Agent locator for customers by region → district.
+
+**Agent float** *(25 Nov, see Money movement model)*. The agent portal gets a **Float** page with two ways to top up and two ways to send money back to the bank:
+- **From bank (Path A):** `POST /api/v1/agent/float/bank-topup {linkedBankId, amount, pin}` + Idempotency-Key. Checks the balance through Plaid, posts ESCROW_BANK → AGENT_FLOAT, posts the Sandbox debit, SMS A3. Daily cap **5,000,000 TZS** (configuration `agent.float.bankTopupDailyCap`); above the cap the screen points to *Request float*. New `LedgerTransactionType.FLOAT_BANK_TOPUP`.
+- **Request float (Path B):** the page shows the escrow bank details and the agent's reference `AG-xxxxx`. `POST /api/v1/agent/float/requests {amount, depositReference, slip}` creates a `treasury_requests` row (`TOPUP`, `PENDING`) with the slip image; SMS A4. Staff approve or reject in the console (Phase 3); SMS A5 or A6. Existing `TOPUP_FLOAT` journal on approval.
+- **Withdraw float to own bank** and **withdraw commission to own bank**: see *Withdraw to own bank* in Phase 1; SMS A7 and A8. There is no "Move commission to float".
+- Agents link their business bank once through Plaid Link; the account name must match the agent's business name.
+
+**Agent transaction history** *(added 24 Nov, your request)*. An agent can see every transaction they conducted: each cash-in they made and each customer withdrawal paid at their till.
+- `GET /api/v1/agent/transactions?type=&from=&to=&q=&page=&size=` with `AGENT_VIEW`. Returns only rows where the logged-in agent's float wallet is the sender or receiver; newest first; `type` is `CASH_IN`, `CASH_OUT` or empty for both; `q` matches the reference, the customer's name or account number; `size` at most 50.
+- Each row: reference, type, customer name, customer phone masked as `+255 7•• ••• 123`, customer wallet account number (`WP-0712-345678`), amount, customer fee, agent commission, status, created at.
+- `GET /api/v1/agent/transactions/{reference}` returns one row with its receipt details, including the customer's full name, **full phone number** and wallet account number *(your call, 24 Nov: the list masks the phone, the detail view shows it in full)*; a reference that isn't the agent's answers 404, never 403, so references can't be probed.
+- Read-only: no reversals or edits (out of scope, as for staff). The customer's PIN is never returned; the full phone number appears only in the single-transaction detail.
+- Agent portal gets a **Transactions** page (search, type and date filters, paging, a detail panel with receipt download), replacing the sidebar's *Withdrawals* link. Story **US-306: Agent sees the transactions they conducted**.
 
 ### Phase 3 — Back office trust
 
-- **Maker-checker for issuance** *(scope my call)*: `mint` and commission top-up become two-step (one staff member requests, a different one approves; new pending state). Agent float requests already have two parties (agent asks, staff decides) and stay single-approval.
-- Tariff management (create/edit with effective dates, no overlapping bands, quote preview).
+- **Treasury with maker-checker** *(25 Nov, replaces the earlier mint plan)*. Float is issued from escrow, so `mint` is no longer a routine action.
+  - **Float requests (Path B):** one staff member approves or rejects after matching the slip with the escrow statement (reference `AG-xxxxx`, amount, date). Rejection needs a reason.
+  - **Commission pool refill:** REVENUE → COMMISSION, one finance staff member. The Overview shows the pool balance, the days it will last at the current rate, and a *Pool low* warning under a configured threshold. Owed commissions are paid automatically after a refill.
+  - **Two approvers** (staff B ≠ staff A, new `PENDING` state) for: revenue sweep to the company bank, transaction reversal (a new opposite journal that links to the original), and treasury adjustment (corrections only, with a required reason).
+  - New `LedgerTransactionType` values: `COMMISSION_POOL_REFILL`, `REVENUE_SWEEP`, `REVERSAL`, `TREASURY_ADJUSTMENT`. The old `MINT_FLOAT` stays for existing rows only; the `POST /treasury/mint` endpoint and the Company master wallet are removed *(26 Nov)*.
+- Tariff management (create/edit with effective dates, no overlapping bands, quote preview). No second approval on tariffs (25 Nov).
 - `audit_logs` for every staff action and status change (who, what, before/after, when).
 - Daily reconciliation job: per wallet, sum of journal lines = balance; variances surface on the dashboard. V26 seeded balances without journals; because the dev database is rebuilt (Decision 3) and all money enters via mint journals, this holds from a fresh database. Any non-rebuilt environment needs an opening-balance journal migration first.
 - Customer 360 for support; lock/unlock wallet with reason.
+- **Agent network growth** *(added 25 Nov; design `2026-11-24-agent-network-growth-design.md`)*. Network growth is shown on Agents › Coverage by region; the staff Overview stays on money and the ledger *(changed 25 Nov, your request)*.
+  - `GET /api/v1/reports/agent-network?months=12`: agents (active + suspended), new this month, active agents (a cash-in or withdrawal in the last 30 days), regions covered of 31 (at least one active agent), customers served by agents, and a monthly series of agents onboarded and active.
+  - `GET /api/v1/reports/agent-network/regions?from=&to=`: per region agents, active, new in period, transactions, volume, customers served; regions with no agents included.
+  - `GET /api/v1/agents/{agentId}/transactions`: staff view of the rows an agent sees in `GET /agent/transactions`.
+  - New permission `NETWORK_REPORT_VIEW` (AGENT module) for ADMIN and Treasury. Can be computed nightly with the reconciliation job.
+- **System settings, read-only** *(25 Nov)*: limits per tier, SMS provider status and Plaid environment, behind `SYSTEM_CONFIG`. Values stay in configuration; no editing or second approval in this release.
 
-Issuance with two approvers (mint and commission top-up):
+Two approvers (revenue sweep, reversal, treasury adjustment):
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING: staff A requests mint or commission top-up
+    [*] --> PENDING: staff A requests a sweep, reversal or adjustment
     PENDING --> APPROVED: staff B approves (B ≠ A)
     PENDING --> REJECTED: staff B rejects with reason
     APPROVED --> POSTED: journal posted, wallets credited
@@ -354,7 +442,26 @@ stateDiagram-v2
 
 ### Phase 4 — Delight
 
-Real-time notifications (introduce SSE here, the first feature that needs push), request money and QR, savings vaults, bills/airtime, insights and statements, Swahili, dark mode. Each gets its own spec.
+Real-time notifications (introduce SSE here, the first feature that needs push), Swahili and dark mode, plus the money features below. Each gets its own spec before it's built. None of them has an endpoint in the backend yet *(checked 26 Nov)*.
+
+**Inside WalletPesa only (no outside partner; can start any time after Phase 1)** *(26 Nov, your request)*
+
+| Feature | Money movement | Escrow | Endpoints to add |
+|---|---|---|---|
+| **Savings vaults** (goals, e.g. "School fees") | CUSTOMER_MAIN ↔ new `CUSTOMER_SAVINGS` wallet | no change | `POST /api/v1/vaults` (name, goal, optional date), `GET /api/v1/vaults`, `POST /api/v1/vaults/{id}/deposit`, `POST /api/v1/vaults/{id}/withdraw`, `DELETE /api/v1/vaults/{id}` (only when empty) |
+| **Request money and QR** | None when requested; paying it is a normal wallet-to-wallet send | no change | `POST /api/v1/money-requests` (phone, amount, note), `GET /api/v1/money-requests?direction=in\|out`, `POST /api/v1/money-requests/{id}/pay` (PIN, reuses the transfer flow), `POST /api/v1/money-requests/{id}/decline`; QR encodes the account number and optional amount |
+| **Statements and insights** | None: a report on the ledger | no change | `GET /api/v1/statements?month=YYYY-MM` (PDF), `GET /api/v1/insights?month=` (totals by type); built on Phase 1's `GET /api/v1/transactions/me` |
+
+New `WalletType.CUSTOMER_SAVINGS` and `LedgerTransactionType.VAULT_DEPOSIT` / `VAULT_WITHDRAW`; a new `money_requests` table. SMS for vault moves and for money requests sent, paid or declined is added to `sms-notifications.md` with each spec.
+
+**Needs an outside partner: later addition** *(26 Nov, your request; parked in `later.md`)*
+
+| Feature | Real-life partner | Money movement | Escrow | Demo |
+|---|---|---|---|---|
+| **Bills** (electricity/LUKU tokens, water, TV, government bills) | A bill aggregator; government bills through **GePG** | CUSTOMER_MAIN → ESCROW_BANK (paid out to the biller) + REVENUE (fee) | ↓ | A "Biller simulator" labelled Demo returns a token or receipt number |
+| **Airtime** | The mobile networks (Vodacom, Airtel, Yas, Halotel), usually through an aggregator | CUSTOMER_MAIN → ESCROW_BANK (paid out to the network or aggregator) | ↓ | An "Airtime simulator" labelled Demo |
+
+These don't wait on TIPS: bills and airtime use their own partners, not the instant payment switch. They sit behind one `BillPaymentProvider` interface so the simulator can be swapped for a real partner without touching wallet or ledger code. Plaid has no part in them.
 
 ### Phase 5 — Mobile
 
@@ -362,6 +469,7 @@ Mobile client on the same `/api/v1`; adds only `devices` (binding, push token) a
 
 ## Cross-cutting rules
 
+- Every money flow sends its message through `NotificationSender` (email for now, SMS later) after the database transaction commits (never inside it), using the template keys in `sms-notifications.md`.
 - Every money flow: one `@Transactional` method → lock wallets in id order → validate → move balances → `postJournal` → write `transactions` row → store idempotent response.
 - Every endpoint has a permission mapped to a module; every staff action writes an audit entry (from Phase 3).
 - Every UI flow works at phone width and by keyboard; copy is ready for English and Swahili.
@@ -1126,6 +1234,7 @@ Agent float top-up or withdrawal requests and the staff decision on them.
 | `request_ref` | varchar(20) | no |  | UQ | Short public reference |
 | `request_type` | varchar(20) | no |  |  | `RequestType` (CHECK constrained) |
 | `external_reference` | varchar(100) | yes |  |  | Outside evidence, e.g. bank deposit slip number |
+| `slip_file_key` *(new, Phase 2)* | varchar(200) | yes |  |  | Stored slip image for Path B float requests |
 
 Constraints & indexes: `CHECK ((amount > (0)))`; `CHECK (((status) = ANY (['PENDING', 'APPROVED', 'REJECTED'][]))`; `CHECK (((request_type) = ANY (['TOPUP', 'WITHDRAWAL'][]))`; indexes: `idx_treasury_requests_agent_id` (agent_id), `idx_treasury_requests_status` (status)
 
@@ -1165,11 +1274,11 @@ Constraints & indexes: unique (region_id, name); indexes: `idx_district_region_i
 | `AgentStatus` | ACTIVE, SUSPENDED, DEACTIVATED | `agents.agent_status` |
 | `StaffStatus` | ACTIVE, SUSPENDED, DISABLED | `staff.status` |
 | `Gender` | MALE, FEMALE, OTHER | `agents.gender` |
-| `WalletType` | COMPANY_MASTER_ACCOUNT, REVENUE, ESCROW_BANK, COMMISSION, AGENT_FLOAT, AGENT_COMMISSION, CUSTOMER_MAIN | `wallets.wallet_type` |
+| `WalletType` | COMPANY_MASTER_ACCOUNT (existing rows only, 26 Nov), REVENUE, ESCROW_BANK, COMMISSION, AGENT_FLOAT, AGENT_COMMISSION, CUSTOMER_MAIN | `wallets.wallet_type` |
 | `WalletStatus` | ACTIVE, SUSPENDED, BLOCKED, CLOSED | `wallets.status` |
-| `TransactionType` | CASH_IN, CASH_OUT, SERVICE_FEE, SERVICE_COMMISSION (+ TRANSFER, BANK_TOPUP, Phase 1) | `transactions.transaction_type`, `tariffs.transaction_type` |
+| `TransactionType` | CASH_IN, CASH_OUT, SERVICE_FEE, SERVICE_COMMISSION (+ TRANSFER, BANK_TOPUP, BANK_WITHDRAWAL, Phase 1; FLOAT_BANK_TOPUP, FLOAT_BANK_WITHDRAWAL, COMMISSION_BANK_WITHDRAWAL, Phase 2; REVERSAL, Phase 3) | `transactions.transaction_type`, `tariffs.transaction_type` |
 | `TransactionStatus` | PENDING, COMPLETED, FAILED | `transactions.status` |
-| `LedgerTransactionType` | MINT_FLOAT, TOPUP_FLOAT, AGENT_WITHDRAW, TOPUP_COMMISSION, CASH_IN, CASH_OUT (+ TRANSFER, BANK_TOPUP, Phase 1) | `transaction_journal.transaction_type` |
+| `LedgerTransactionType` | MINT_FLOAT (existing rows only), TOPUP_FLOAT, AGENT_WITHDRAW, TOPUP_COMMISSION, CASH_IN, CASH_OUT (+ TRANSFER, BANK_TOPUP, BANK_WITHDRAW, Phase 1; FLOAT_BANK_TOPUP, Phase 2; COMMISSION_POOL_REFILL, REVENUE_SWEEP, REVERSAL, TREASURY_ADJUSTMENT, Phase 3) | `transaction_journal.transaction_type` |
 | `EntryType` | DEBIT, CREDIT | `transaction_journal_line.entry_type` |
 | `RequestType` | TOPUP, WITHDRAWAL | `treasury_requests.request_type` |
 | `RequestStatus` | PENDING, APPROVED, REJECTED | `treasury_requests.status` |
@@ -1588,6 +1697,21 @@ jobs:
 | 3 | Withdrawal model | Customer-initiated, as recommended. |
 | 4 | Limits | Tiered by Plaid KYC result; demo amounts in Phase 1. |
 | 5 | Push access | You'll connect the Claude GitHub App. |
+| 6 | Agent transactions | Agents can see the transactions they conducted (24 Nov): Phase 2, `GET /agent/transactions`. |
+| 7 | Staff console story | The agent network is growing (25 Nov): Phase 3 network growth report, Coverage by region, staff view of one agent's transactions. Design: `2026-11-24-agent-network-growth-design.md`. |
+| 8 | Username | No username for anyone (customers, agents, staff); sign in with phone + PIN at `/login` (25 Nov). |
+| 9 | Forgot PIN | By phone + last 4 NIDA digits and an SMS code, not email (25 Nov). |
+| 10 | Money movement | Every wallet shilling is backed by escrow; float is issued from escrow, not minted (25 Nov). See *Money movement model*. |
+| 11 | Customer cash-out | At an agent, or to their **own** linked bank, fee 1,000 (25 Nov). Sending to someone else's bank is parked for later. |
+| 12 | Send money | Wallet to wallet now; other mobile networks (MNOs) later, through TIPS (25 Nov). |
+| 13 | Agent float | Path A from own bank, automatic, 5,000,000 TZS a day; Path B deposit slip with one staff approval (25 Nov). |
+| 14 | Commission | Paid automatically from a commission pool that finance refills, with a *Pool low* warning (25 Nov). |
+| 15 | SMS | SMS for every money movement and security event; list in `sms-notifications.md` (25 Nov). |
+| 16 | Phase 4 money features | Savings vaults, request money and statements stay inside WalletPesa and can start after Phase 1; bills and airtime need outside partners and are a later addition (26 Nov). |
+| 17 | Notifications | Email for now for codes, one-time PINs and money alerts, through `NotificationSender`; SMS later (26 Nov). |
+| 18 | Company master | Removed: float from escrow, pool refills from Revenue, adjustments Escrow ↔ Revenue (26 Nov). |
+| 19 | Agent and staff forgot PIN | Admin resets it; a new one-time PIN goes by email (26 Nov). |
+| 20 | Routes | Keep today's `/app`, `/agent`, `/console` and `/change-pin` (26 Nov). |
 
 **Still needed from you:** approve this document. After that, the next step is a step-by-step build plan for Phase 0.
 
