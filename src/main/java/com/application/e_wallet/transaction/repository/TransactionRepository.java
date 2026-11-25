@@ -169,4 +169,15 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
             """)
     BigDecimal sumPendingAmountByReceiverWalletId(@Param("walletId") UUID walletId);
 
+
+    /** Completed money that left this wallet in a time window, for the daily limit. */
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
+            WHERE t.senderWallet.id = :walletId
+              AND t.status = 'COMPLETED'
+              AND t.transactionType IN :types
+              AND t.createdAt >= :start AND t.createdAt < :end
+            """)
+    BigDecimal sumSentBetween(@Param("walletId") UUID walletId, @Param("types") java.util.Collection<String> types,
+                              @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
 }
