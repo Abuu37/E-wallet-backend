@@ -15,7 +15,6 @@ import com.application.e_wallet.location.entity.DistrictEntity;
 import com.application.e_wallet.location.entity.RegionEntity;
 import com.application.e_wallet.location.repository.DistrictRepository;
 import com.application.e_wallet.location.repository.RegionRepository;
-import com.application.e_wallet.otp.service.EmailService;
 import com.application.e_wallet.otp.service.OtpGenerator;
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.role.repository.RoleRepository;
@@ -67,7 +66,7 @@ class AgentServiceTest {
     @Mock private PhoneNumberNormalizer phoneNumberNormalizer;
     @Mock private OtpGenerator otpGenerator;
     @Mock private PasswordEncoder pinEncoder;
-    @Mock private EmailService emailService;
+    @Mock private com.application.e_wallet.notification.Notifier notifier;
 
         @Mock private com.application.e_wallet.common.identifier.IdentifierService identifierService;
 

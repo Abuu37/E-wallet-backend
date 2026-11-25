@@ -29,7 +29,7 @@ public class PinResetService {
     private final PinResetProperties pinResetProperties;
     private final PasswordEncoder passwordEncoder; // hashes/verifies the OTP
     private final PasswordEncoder pinEncoder; // hashes/verifies the PIN
-    private final EmailService emailService;
+    private final com.application.e_wallet.notification.Notifier notifier;
 
     //======== Always called from the controller — never reveals whether the email exists ========
     @Transactional
@@ -76,13 +76,8 @@ public class PinResetService {
 
         pinResetTokenRepository.save(token);
 
-        try {
-            emailService.sendPinResetOtp(
-                    user.getEmail(), otp, pinResetProperties.getExpirationMinutes()
-            );
-        } catch (Exception exception) {
-            log.error("Failed to send PIN reset email to {}", user.getEmail(), exception);
-        }
+        notifier.notify(com.application.e_wallet.notification.NotificationKey.S2, com.application.e_wallet.notification.NotificationRecipient.of(user),
+                java.util.Map.of("code", otp, "minutes", String.valueOf(pinResetProperties.getExpirationMinutes())));
     }
 
     @Transactional(noRollbackFor = BadRequestException.class)

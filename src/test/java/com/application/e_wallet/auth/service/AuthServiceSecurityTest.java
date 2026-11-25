@@ -10,7 +10,6 @@ import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
 import com.application.e_wallet.customer.service.CustomerService;
 import com.application.e_wallet.otp.repository.OtpVerificationRepository;
-import com.application.e_wallet.otp.service.EmailService;
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.security.jwt.JwtProperties;
 import com.application.e_wallet.security.jwt.JwtService;
@@ -60,7 +59,7 @@ class AuthServiceSecurityTest {
     @Mock private RefreshTokenHashService refreshTokenHashService;
     @Mock private WalletService walletService;
     @Mock private OtpVerificationRepository otpVerificationRepository;
-    @Mock private EmailService emailService;
+    @Mock private com.application.e_wallet.notification.Notifier notifier;
 
     @InjectMocks private AuthService authService;
 

@@ -50,7 +50,7 @@ public class AuthService {
     private final RefreshTokenHashService refreshTokenHashService;
     private final WalletService walletService;
     private final OtpVerificationRepository otpVerificationRepository;
-    private final EmailService emailService;
+    private final com.application.e_wallet.notification.Notifier notifier;
 
     // How long after OTP verification the user has to call set-pin before they must re-verify.
     private static final long PIN_SETUP_WINDOW_MINUTES = 15;
@@ -108,7 +108,7 @@ public class AuthService {
         CustomerEntity customer = customerService.activateCustomer(user.getId());
         WalletEntity wallet = walletService.createWallet(customer);
 
-        emailService.sendPinSetConfirmation(user.getEmail()); // email pin confirmation
+        notifier.notify(com.application.e_wallet.notification.NotificationKey.S3, com.application.e_wallet.notification.NotificationRecipient.of(user), java.util.Map.of());
 
         return UserProfileResponse.builder()
                 .customerId(customer.getId())

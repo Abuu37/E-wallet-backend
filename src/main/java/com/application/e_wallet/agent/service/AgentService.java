@@ -72,7 +72,7 @@ public class AgentService {
     private final PhoneNumberNormalizer phoneNumberNormalizer;
     private final OtpGenerator otpGenerator;
     private final PasswordEncoder pinEncoder;
-    private final EmailService emailService;
+    private final com.application.e_wallet.notification.Notifier notifier;
     private final com.application.e_wallet.audit.service.AuditService auditService;
 
     //======================== CREATE AN AGENT ==================== //
@@ -174,7 +174,8 @@ public class AgentService {
                 java.util.Map.of("agentNumber", savedAgent.getAgentNumber(), "businessName", savedAgent.getBusinessName()), "Agent onboarded");
 
         // Sends the one-time PIN the agent must use to log in and then change.
-        emailService.sendOneTimePin(savedUser.getEmail(), oneTimePin);
+        notifier.notify(com.application.e_wallet.notification.NotificationKey.S4, com.application.e_wallet.notification.NotificationRecipient.of(savedUser),
+                java.util.Map.of("name", savedAgent.getBusinessName(), "agentId", agentNumber, "pin", oneTimePin));
 
         return toOnboardResponse(savedAgent, savedUser, savedFloatWallet, savedCommissionWallet);
     }

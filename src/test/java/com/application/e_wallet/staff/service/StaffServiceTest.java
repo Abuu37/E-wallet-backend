@@ -4,7 +4,6 @@ import com.application.e_wallet.auth.repository.UserSessionRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.common.exception.DuplicationResourceException;
 import com.application.e_wallet.common.validation.PhoneNumberNormalizer;
-import com.application.e_wallet.otp.service.EmailService;
 import com.application.e_wallet.otp.service.OtpGenerator;
 import com.application.e_wallet.role.entity.RoleEntity;
 import com.application.e_wallet.role.repository.RoleRepository;
@@ -48,7 +47,7 @@ class StaffServiceTest {
     @Mock private PhoneNumberNormalizer phoneNumberNormalizer;
     @Mock private OtpGenerator otpGenerator;
     @Mock private PasswordEncoder pinEncoder;
-    @Mock private EmailService emailService;
+    @Mock private com.application.e_wallet.notification.Notifier notifier;
 
         @Mock private com.application.e_wallet.common.identifier.IdentifierService identifierService;
 

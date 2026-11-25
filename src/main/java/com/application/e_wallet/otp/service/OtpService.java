@@ -26,7 +26,7 @@ public class OtpService {
     private final OtpProperties otpProperties;
     private final PasswordEncoder passwordEncoder;
     private final UserRepository userRepository;
-    private final EmailService emailService;
+    private final com.application.e_wallet.notification.Notifier notifier;
 
     //============ Generate Otp =============== //
     public String generateAndStoreOtp(UserEntity user) {
@@ -63,11 +63,8 @@ public class OtpService {
 
         String otp = generateAndStoreOtp(user);
 
-        try {
-            emailService.sendVerificationOtp(user.getEmail(), otp);
-        } catch (Exception exception) {
-            log.error("Failed to send OTP email to {}", user.getEmail(), exception);
-        }
+        notifier.notify(com.application.e_wallet.notification.NotificationKey.S1, com.application.e_wallet.notification.NotificationRecipient.of(user),
+                java.util.Map.of("code", otp, "minutes", String.valueOf(otpProperties.getExpirationMinutes())));
     }
 
     // ============= Resend Otp =============== //

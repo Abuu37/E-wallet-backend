@@ -43,7 +43,7 @@ public class StaffService {
     private final PhoneNumberNormalizer phoneNumberNormalizer;
     private final OtpGenerator otpGenerator;
     private final PasswordEncoder pinEncoder;
-    private final EmailService emailService;
+    private final com.application.e_wallet.notification.Notifier notifier;
 
     //======================== CREATE A STAFF MEMBER ==================== //
     @Transactional
@@ -98,7 +98,8 @@ public class StaffService {
         StaffEntity savedStaff = staffRepository.save(staff); //=== Staff profile created ====
 
         // Sends the one-time PIN the staff member must use to log in and then change.
-        emailService.sendOneTimePin(savedUser.getEmail(), oneTimePin);
+        notifier.notify(com.application.e_wallet.notification.NotificationKey.S5, com.application.e_wallet.notification.NotificationRecipient.of(savedUser),
+                java.util.Map.of("pin", oneTimePin));
 
         return toOnboardResponse(savedStaff, savedUser);
     }
