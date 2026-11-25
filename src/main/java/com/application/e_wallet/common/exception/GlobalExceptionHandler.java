@@ -207,6 +207,39 @@ public class GlobalExceptionHandler {
                 .body(errorResponse);
     }
 
+    //============ Client mistakes that are not server faults ============
+    // A wrong method, content type or path is the caller's mistake: answer with the right 4xx and no stack trace.
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED);
+        if (exception.getSupportedHttpMethods() != null) {
+            builder.allow(exception.getSupportedHttpMethods().toArray(new org.springframework.http.HttpMethod[0]));
+        }
+        return builder.body(clientError(HttpStatus.METHOD_NOT_ALLOWED, "This endpoint does not accept " + request.getMethod() + " requests.", request));
+    }
+
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMediaTypeNotSupported(org.springframework.web.HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(clientError(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Send the request body as application/json.", request));
+    }
+
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(org.springframework.web.servlet.resource.NoResourceFoundException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(clientError(HttpStatus.NOT_FOUND, "No such endpoint.", request));
+    }
+
+    private ErrorResponse clientError(HttpStatus status, String message, HttpServletRequest request) {
+        return ErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .message(message)
+                .path(request.getRequestURI())
+                .build();
+    }
+
     //============ Generic Fallback Handler (Logs Trace Internally Only) ============
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(

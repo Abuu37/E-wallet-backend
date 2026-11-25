@@ -42,6 +42,13 @@ class AuthHttpSecurityTest {
     }
 
     @Test
+    void aWrongHttpMethodIsA405NotA500() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/login"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string("Allow", org.hamcrest.Matchers.containsString("POST")));
+    }
+
+    @Test
     void refreshWithoutCsrfTokenIsForbidden() throws Exception {
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("wp_refresh", "anything")))
                 .andExpect(status().isForbidden());

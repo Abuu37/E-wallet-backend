@@ -171,6 +171,9 @@ public class    AgentService {
         WalletEntity savedFloatWallet = walletRepository.save(floatWallet);
         WalletEntity savedCommissionWallet = walletRepository.save(commissionWallet);
 
+        auditService.recordAsCurrentUser("AGENT_ONBOARD", "AGENT", savedAgent.getId(), null,
+                java.util.Map.of("agentNumber", savedAgent.getAgentNumber(), "businessName", savedAgent.getBusinessName()), "Agent onboarded");
+
         // Sends the one-time PIN the agent must use to log in and then change.
         emailService.sendOneTimePin(savedUser.getEmail(), oneTimePin);
 
