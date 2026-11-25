@@ -35,13 +35,17 @@ import java.time.Instant;
 public class TransactionController {
 
     private final TransactionService transactionService;
+    private final com.application.e_wallet.common.idempotency.IdempotencyService idempotencyService;
 
     @PostMapping("/cash-in")
     @PreAuthorize("hasAuthority('TOPUP_CREATE')")
-    public ResponseEntity<ApiResponse<CashInResponse>> cashIn(@Valid @RequestBody CashInRequest request, Authentication authentication) {
+    public ResponseEntity<ApiResponse<CashInResponse>> cashIn(@Valid @RequestBody CashInRequest request,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
 
-        CashInResponse response = transactionService.cashIn(request, principal.userId());
+        CashInResponse response = idempotencyService.execute(principal.userId(), idempotencyKey, "POST /transactions/cash-in", request,
+                CashInResponse.class, () -> transactionService.cashIn(request, principal.userId()));
 
         ApiResponse<CashInResponse> body = ApiResponse.<CashInResponse>builder()
                 .timestamp(Instant.now())
@@ -55,10 +59,13 @@ public class TransactionController {
 
     @PostMapping("/cash-out")
     @PreAuthorize("hasAuthority('WITHDRAWAL_CREATE')")
-    public ResponseEntity<ApiResponse<CashOutResponse>> cashOut(@Valid @RequestBody CashOutRequest request, Authentication authentication) {
+    public ResponseEntity<ApiResponse<CashOutResponse>> cashOut(@Valid @RequestBody CashOutRequest request,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
 
-        CashOutResponse response = transactionService.cashOut(request, principal.userId());
+        CashOutResponse response = idempotencyService.execute(principal.userId(), idempotencyKey, "POST /transactions/cash-out", request,
+                CashOutResponse.class, () -> transactionService.cashOut(request, principal.userId()));
 
         ApiResponse<CashOutResponse> body = ApiResponse.<CashOutResponse>builder()
                 .timestamp(Instant.now())

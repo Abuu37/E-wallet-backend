@@ -208,6 +208,12 @@ public class GlobalExceptionHandler {
     }
 
     //============ Client mistakes that are not server faults ============
+    @ExceptionHandler(org.springframework.web.bind.MissingRequestHeaderException.class)
+    public ResponseEntity<ErrorResponse> handleMissingHeader(org.springframework.web.bind.MissingRequestHeaderException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(clientError(HttpStatus.BAD_REQUEST, "The " + exception.getHeaderName() + " header is required.", request));
+    }
+
     // A wrong method, content type or path is the caller's mistake: answer with the right 4xx and no stack trace.
     @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {

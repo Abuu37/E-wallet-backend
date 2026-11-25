@@ -30,6 +30,7 @@ public class TreasuryController {
 
     private final TreasuryService treasuryService;
     private final TreasuryRequestService treasuryRequestService;
+    private final com.application.e_wallet.common.idempotency.IdempotencyService idempotencyService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('COMPANY_WALLET_VIEW')")
@@ -48,9 +49,12 @@ public class TreasuryController {
     @PostMapping("/commission/topup")
     @PreAuthorize("hasAuthority('COMMISSION_MANAGE')")
     public ResponseEntity<ApiResponse<CommissionTopupResponse>> refillCommissionPool(
-            @Valid @RequestBody CommissionTopupRequest request, Authentication authentication) {
+            @Valid @RequestBody CommissionTopupRequest request,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        CommissionTopupResponse response = treasuryService.fundCommission(request.amount(), request.description(), principal.userId());
+        CommissionTopupResponse response = idempotencyService.execute(principal.userId(), idempotencyKey, "POST /treasury/commission/topup", request,
+                CommissionTopupResponse.class, () -> treasuryService.fundCommission(request.amount(), request.description(), principal.userId()));
         return ResponseEntity.status(HttpStatus.CREATED).body(ok("Commission pool refilled from revenue.", response));
     }
 

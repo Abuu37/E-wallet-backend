@@ -28,12 +28,16 @@ public class TreasuryRequestController {
 
     private static final String MANAGE_AUTHORITY = "FLOAT_MANAGE";
     private final TreasuryRequestService treasuryRequestService;
+    private final com.application.e_wallet.common.idempotency.IdempotencyService idempotencyService;
 
     @PostMapping
     @PreAuthorize("hasAuthority('REQUEST_FLOAT')")
-    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> createRequest(@Valid @RequestBody TreasuryRequestCreateRequest request, Authentication authentication) {
+    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> createRequest(@Valid @RequestBody TreasuryRequestCreateRequest request,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        TreasuryRequestResponse response = treasuryRequestService.createRequest(principal.userId(), request);
+        TreasuryRequestResponse response = idempotencyService.execute(principal.userId(), idempotencyKey, "POST /treasury/requests", request,
+                TreasuryRequestResponse.class, () -> treasuryRequestService.createRequest(principal.userId(), request));
 
         ApiResponse<TreasuryRequestResponse> body = ApiResponse.<TreasuryRequestResponse>builder()
                 .timestamp(Instant.now())
@@ -89,10 +93,12 @@ public class TreasuryRequestController {
     @PreAuthorize("hasAuthority('FLOAT_MANAGE')")
     public ResponseEntity<ApiResponse<TreasuryRequestResponse>> approveRequest(
             @PathVariable UUID requestId,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             Authentication authentication
     ) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        TreasuryRequestResponse response = treasuryRequestService.approveRequest(requestId, principal.userId());
+        TreasuryRequestResponse response = idempotencyService.execute(principal.userId(), idempotencyKey, "POST /treasury/requests/approve", requestId,
+                TreasuryRequestResponse.class, () -> treasuryRequestService.approveRequest(requestId, principal.userId()));
 
         ApiResponse<TreasuryRequestResponse> body = ApiResponse.<TreasuryRequestResponse>builder()
                 .timestamp(Instant.now())
@@ -109,10 +115,12 @@ public class TreasuryRequestController {
     public ResponseEntity<ApiResponse<TreasuryRequestResponse>> rejectRequest(
             @PathVariable UUID requestId,
             @Valid @RequestBody TreasuryRequestDecisionRequest request,
+            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             Authentication authentication
     ) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        TreasuryRequestResponse response = treasuryRequestService.rejectRequest(requestId, principal.userId(), request);
+        TreasuryRequestResponse response = idempotencyService.execute(principal.userId(), idempotencyKey, "POST /treasury/requests/reject", java.util.List.of(requestId, request),
+                TreasuryRequestResponse.class, () -> treasuryRequestService.rejectRequest(requestId, principal.userId(), request));
 
         ApiResponse<TreasuryRequestResponse> body = ApiResponse.<TreasuryRequestResponse>builder()
                 .timestamp(Instant.now())
