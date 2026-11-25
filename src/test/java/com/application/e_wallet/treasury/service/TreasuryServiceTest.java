@@ -6,9 +6,10 @@ import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.ledger.dto.JournalLineRequest;
 import com.application.e_wallet.ledger.entity.EntryType;
 import com.application.e_wallet.ledger.entity.LedgerTransactionType;
+import com.application.e_wallet.ledger.entity.TransactionJournalEntity;
 import com.application.e_wallet.ledger.repository.TransactionJournalRepository;
 import com.application.e_wallet.ledger.service.LedgerService;
-import com.application.e_wallet.treasury.dto.MintRequest;
+import com.application.e_wallet.treasury.dto.CommissionTopupResponse;
 import com.application.e_wallet.treasury.dto.TreasuryOverviewResponse;
 import com.application.e_wallet.treasury.repository.TreasuryRequestRepository;
 import com.application.e_wallet.user.entity.UserEntity;
@@ -34,10 +35,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
+/**
+ * Float is issued straight from escrow (real money came in), the commission pool is refilled from revenue,
+ * and float goes back to the bank through escrow. There is no company master wallet and no minting.
+ */
 @ExtendWith(MockitoExtension.class)
 class TreasuryServiceTest {
 
@@ -52,13 +57,25 @@ class TreasuryServiceTest {
     private UUID adminUserId;
     private UserEntity admin;
 
-    private WalletEntity companyWallet;
     private WalletEntity escrowWallet;
+    private WalletEntity revenueWallet;
+    private WalletEntity commissionWallet;
 
     private UUID agentId;
     private UUID agentUserId;
     private AgentEntity agent;
     private WalletEntity agentFloatWallet;
+
+    private static WalletEntity wallet(WalletType type, String balance) {
+        return WalletEntity.builder()
+                .id(UUID.randomUUID())
+                .walletType(type)
+                .accountName(type.name())
+                .balance(new BigDecimal(balance))
+                .status(WalletStatus.ACTIVE)
+                .currency("TZS")
+                .build();
+    }
 
     @BeforeEach
     void setUp() {
@@ -66,93 +83,73 @@ class TreasuryServiceTest {
         admin = UserEntity.builder().id(adminUserId).build();
         lenient().when(userRepository.findById(adminUserId)).thenReturn(Optional.of(admin));
 
-        companyWallet = WalletEntity.builder()
-                .id(UUID.randomUUID())
-                .walletType(WalletType.COMPANY_MASTER_ACCOUNT)
-                .balance(new BigDecimal("1000.00"))
-                .status(WalletStatus.ACTIVE)
-                .currency("TZS")
-                .build();
+        escrowWallet = wallet(WalletType.ESCROW_BANK, "1000.00");
+        revenueWallet = wallet(WalletType.REVENUE, "400.00");
+        commissionWallet = wallet(WalletType.COMMISSION, "100.00");
 
-        escrowWallet = WalletEntity.builder()
-                .id(UUID.randomUUID())
-                .walletType(WalletType.ESCROW_BANK)
-                .balance(new BigDecimal("1000.00"))
-                .status(WalletStatus.ACTIVE)
-                .currency("TZS")
-                .build();
-
-        lenient().when(walletRepository.findByWalletTypeForUpdate(WalletType.COMPANY_MASTER_ACCOUNT))
-                .thenReturn(Optional.of(companyWallet));
-        lenient().when(walletRepository.findByWalletTypeForUpdate(WalletType.ESCROW_BANK))
-                .thenReturn(Optional.of(escrowWallet));
+        lenient().when(walletRepository.findByWalletTypeForUpdate(WalletType.ESCROW_BANK)).thenReturn(Optional.of(escrowWallet));
+        lenient().when(walletRepository.findByWalletTypeForUpdate(WalletType.REVENUE)).thenReturn(Optional.of(revenueWallet));
+        lenient().when(walletRepository.findByWalletTypeForUpdate(WalletType.COMMISSION)).thenReturn(Optional.of(commissionWallet));
 
         agentUserId = UUID.randomUUID();
         UserEntity agentUser = UserEntity.builder().id(agentUserId).build();
         agentId = UUID.randomUUID();
         agent = AgentEntity.builder().id(agentId).user(agentUser).build();
 
-        agentFloatWallet = WalletEntity.builder()
-                .id(UUID.randomUUID())
-                .walletType(WalletType.AGENT_FLOAT)
-                .balance(new BigDecimal("50.00"))
-                .status(WalletStatus.ACTIVE)
-                .currency("TZS")
-                .build();
+        agentFloatWallet = wallet(WalletType.AGENT_FLOAT, "50.00");
 
         lenient().when(agentRepository.findById(agentId)).thenReturn(Optional.of(agent));
         lenient().when(walletRepository.findByUserIdAndWalletTypeForUpdate(agentUserId, WalletType.AGENT_FLOAT))
                 .thenReturn(Optional.of(agentFloatWallet));
 
         lenient().when(walletRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        TransactionJournalEntity journal = mock(TransactionJournalEntity.class);
+        lenient().when(journal.getReferenceNumber()).thenReturn("JRN-TEST");
+        lenient().when(journal.getTransactionType()).thenReturn(LedgerTransactionType.TOPUP_COMMISSION);
+        lenient().when(ledgerService.postJournal(any(), any(), any(), any())).thenReturn(journal);
     }
 
     @Test
-    void getOverviewReturnsCompanyWalletSnapshotWithoutExternalReference() {
-        lenient().when(walletRepository.findByWalletType(WalletType.COMPANY_MASTER_ACCOUNT))
-                .thenReturn(Optional.of(companyWallet));
-        lenient().when(walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT))
-                .thenReturn(new BigDecimal("500.00"));
+    void overviewShowsEscrowCommissionPoolAndRevenue() {
+        lenient().when(walletRepository.findByWalletType(WalletType.ESCROW_BANK)).thenReturn(Optional.of(escrowWallet));
+        lenient().when(walletRepository.sumBalanceByWalletType(WalletType.COMMISSION)).thenReturn(new BigDecimal("100.00"));
+        lenient().when(walletRepository.sumBalanceByWalletType(WalletType.REVENUE)).thenReturn(new BigDecimal("400.00"));
+        lenient().when(walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT)).thenReturn(new BigDecimal("500.00"));
         lenient().when(treasuryRequestRepository.sumAmountByStatus(any())).thenReturn(BigDecimal.ZERO);
         lenient().when(treasuryRequestRepository.countByStatus(any())).thenReturn(0L);
 
         TreasuryOverviewResponse overview = treasuryService.getOverview("admin@e-wallet.com");
 
-        assertThat(overview.walletId()).isEqualTo(companyWallet.getId());
+        assertThat(overview.walletId()).isEqualTo(escrowWallet.getId());
         assertThat(overview.currency()).isEqualTo("TZS");
-        assertThat(overview.unallocatedFloat()).isEqualByComparingTo(new BigDecimal("1000.00"));
-        assertThat(overview.totalDistributedFloat()).isEqualByComparingTo(new BigDecimal("500.00"));
+        assertThat(overview.escrowBalance()).isEqualByComparingTo("1000.00");
+        assertThat(overview.commissionPoolBalance()).isEqualByComparingTo("100.00");
+        assertThat(overview.revenueBalance()).isEqualByComparingTo("400.00");
+        assertThat(overview.totalDistributedFloat()).isEqualByComparingTo("500.00");
         assertThat(overview.createdBy()).isEqualTo("admin@e-wallet.com");
-        assertThat(overview.createdAt()).isNotNull();
     }
 
-    @Test
-    void mintPostsTwoDistinctWalletLegs() {
-        treasuryService.mint(new MintRequest(new BigDecimal("200.00"), "bank deposit"), adminUserId);
+    // ---- float issued from escrow
 
-        verify(ledgerService).postJournal(eq(LedgerTransactionType.MINT_FLOAT), any(), eq(admin), argThat(lines ->
+    @Test
+    void topupIssuesFloatFromEscrowSoBothGoUp() {
+        treasuryService.topup(agentId, new BigDecimal("300.00"), "deposit checked", adminUserId);
+
+        assertThat(escrowWallet.getBalance()).isEqualTo(new BigDecimal("1300.00"));
+        assertThat(agentFloatWallet.getBalance()).isEqualTo(new BigDecimal("350.00"));
+        verify(ledgerService).postJournal(eq(LedgerTransactionType.TOPUP_FLOAT), any(), eq(admin), argThat(lines ->
                 lines.size() == 2
                 && lines.stream().map(JournalLineRequest::walletId).distinct().count() == 2
                 && lines.stream().anyMatch(l -> l.walletId().equals(escrowWallet.getId()) && l.entryType() == EntryType.DEBIT)
-                && lines.stream().anyMatch(l -> l.walletId().equals(companyWallet.getId()) && l.entryType() == EntryType.CREDIT)
+                && lines.stream().anyMatch(l -> l.walletId().equals(agentFloatWallet.getId()) && l.entryType() == EntryType.CREDIT)
         ));
-        assertThat(companyWallet.getBalance()).isEqualTo(new BigDecimal("1200.00"));
-        assertThat(escrowWallet.getBalance()).isEqualTo(new BigDecimal("1200.00"));
     }
 
     @Test
-    void mintRejectsNonPositiveAmount() {
-        assertThatThrownBy(() -> treasuryService.mint(new MintRequest(BigDecimal.ZERO, "x"), adminUserId))
-                .isInstanceOf(BadRequestException.class);
-        verifyNoInteractions(ledgerService);
-    }
-
-    @Test
-    void mintRejectsAmountWithMoreThanTwoDecimalPlaces() {
-        assertThatThrownBy(() -> treasuryService.mint(
-                new MintRequest(new BigDecimal("10.005"), "x"), adminUserId))
-                .isInstanceOf(BadRequestException.class);
-        verifyNoInteractions(ledgerService);
+    void topupLocksTheSpecificAgentWalletRow() {
+        treasuryService.topup(agentId, new BigDecimal("50.00"), "x", adminUserId);
+        verify(walletRepository).findByUserIdAndWalletTypeForUpdate(agentUserId, WalletType.AGENT_FLOAT);
     }
 
     @Test
@@ -162,6 +159,30 @@ class TreasuryServiceTest {
         assertThatThrownBy(() -> treasuryService.topup(agentId, new BigDecimal("10.00"), "x", adminUserId))
                 .isInstanceOf(BadRequestException.class);
         verifyNoInteractions(ledgerService);
+    }
+
+    @Test
+    void topupRejectsNonPositiveAmountAndExtraDecimals() {
+        assertThatThrownBy(() -> treasuryService.topup(agentId, BigDecimal.ZERO, "x", adminUserId)).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> treasuryService.topup(agentId, new BigDecimal("10.005"), "x", adminUserId)).isInstanceOf(BadRequestException.class);
+        verifyNoInteractions(ledgerService);
+    }
+
+    // ---- float paid out to the bank
+
+    @Test
+    void withdrawPaysFloatOutThroughEscrowSoBothGoDown() {
+        agentFloatWallet.setBalance(new BigDecimal("100.00"));
+
+        treasuryService.withdraw(agentId, new BigDecimal("40.00"), "to bank", adminUserId);
+
+        assertThat(escrowWallet.getBalance()).isEqualTo(new BigDecimal("960.00"));
+        assertThat(agentFloatWallet.getBalance()).isEqualTo(new BigDecimal("60.00"));
+        verify(ledgerService).postJournal(eq(LedgerTransactionType.AGENT_WITHDRAW), any(), eq(admin), argThat(lines ->
+                lines.size() == 2
+                && lines.stream().anyMatch(l -> l.walletId().equals(agentFloatWallet.getId()) && l.entryType() == EntryType.DEBIT)
+                && lines.stream().anyMatch(l -> l.walletId().equals(escrowWallet.getId()) && l.entryType() == EntryType.CREDIT)
+        ));
     }
 
     @Test
@@ -182,66 +203,44 @@ class TreasuryServiceTest {
     }
 
     @Test
-    void topupLocksTheSpecificAgentWalletRow() {
-        treasuryService.topup(agentId, new BigDecimal("50.00"), "x", adminUserId);
-        verify(walletRepository).findByUserIdAndWalletTypeForUpdate(agentUserId, WalletType.AGENT_FLOAT);
-    }
-
-    @Test
-    void topupMovesFloatFromUnallocatedToAgent() {
-        treasuryService.topup(agentId, new BigDecimal("300.00"), "topup", adminUserId);
-
-        assertThat(companyWallet.getBalance()).isEqualTo(new BigDecimal("700.00"));
-        assertThat(agentFloatWallet.getBalance()).isEqualTo(new BigDecimal("350.00"));
-        verify(walletRepository).save(companyWallet);
-        verify(walletRepository).save(agentFloatWallet);
-        verify(ledgerService).postJournal(eq(LedgerTransactionType.TOPUP_FLOAT), any(), eq(admin), argThat(lines ->
-                lines.size() == 2
-                && lines.stream().map(JournalLineRequest::walletId).distinct().count() == 2
-                && lines.stream().anyMatch(l -> l.walletId().equals(companyWallet.getId()) && l.entryType() == EntryType.DEBIT)
-                && lines.stream().anyMatch(l -> l.walletId().equals(agentFloatWallet.getId()) && l.entryType() == EntryType.CREDIT)
-        ));
-    }
-
-    @Test
-    void topupSucceedsWhenAmountEqualsAvailableUnallocatedFloat() {
-        treasuryService.topup(agentId, new BigDecimal("1000.00"), "all of it", adminUserId);
-
-        assertThat(companyWallet.getBalance()).isEqualTo(BigDecimal.ZERO);
-    }
-
-    @Test
-    void topupRejectsWhenUnallocatedFloatInsufficient() {
-        assertThatThrownBy(() -> treasuryService.topup(
-                agentId, new BigDecimal("1000.01"), "too much", adminUserId))
-                .isInstanceOf(BadRequestException.class);
-        verifyNoInteractions(ledgerService);
-    }
-
-    @Test
-    void withdrawMovesFloatFromAgentToUnallocated() {
-        agentFloatWallet.setBalance(new BigDecimal("100.00"));
-
-        treasuryService.withdraw(agentId, new BigDecimal("40.00"), "return", adminUserId);
-
-        assertThat(companyWallet.getBalance()).isEqualTo(new BigDecimal("1040.00"));
-        assertThat(agentFloatWallet.getBalance()).isEqualTo(new BigDecimal("60.00"));
-        verify(walletRepository).save(companyWallet);
-        verify(walletRepository).save(agentFloatWallet);
-        verify(ledgerService).postJournal(eq(LedgerTransactionType.AGENT_WITHDRAW), any(), eq(admin), argThat(lines ->
-                lines.size() == 2
-                && lines.stream().map(JournalLineRequest::walletId).distinct().count() == 2
-                && lines.stream().anyMatch(l -> l.walletId().equals(agentFloatWallet.getId()) && l.entryType() == EntryType.DEBIT)
-                && lines.stream().anyMatch(l -> l.walletId().equals(companyWallet.getId()) && l.entryType() == EntryType.CREDIT)
-        ));
-    }
-
-    @Test
     void withdrawSucceedsWhenAmountEqualsAgentBalance() {
         agentFloatWallet.setBalance(new BigDecimal("25.00"));
 
         treasuryService.withdraw(agentId, new BigDecimal("25.00"), "all", adminUserId);
 
         assertThat(agentFloatWallet.getBalance()).isEqualTo(BigDecimal.ZERO);
+    }
+
+    // ---- commission pool refilled from revenue
+
+    @Test
+    void refillMovesRevenueIntoTheCommissionPoolWithoutTouchingEscrow() {
+        CommissionTopupResponse response = treasuryService.fundCommission(new BigDecimal("150.00"), "month start", adminUserId);
+
+        assertThat(revenueWallet.getBalance()).isEqualTo(new BigDecimal("250.00"));
+        assertThat(commissionWallet.getBalance()).isEqualTo(new BigDecimal("250.00"));
+        assertThat(escrowWallet.getBalance()).isEqualTo(new BigDecimal("1000.00"));
+        assertThat(response.status()).isEqualTo("COMPLETED");
+        verify(ledgerService).postJournal(eq(LedgerTransactionType.TOPUP_COMMISSION), any(), eq(admin), argThat(lines ->
+                lines.size() == 2
+                && lines.stream().anyMatch(l -> l.walletId().equals(revenueWallet.getId()) && l.entryType() == EntryType.DEBIT)
+                && lines.stream().anyMatch(l -> l.walletId().equals(commissionWallet.getId()) && l.entryType() == EntryType.CREDIT)
+        ));
+    }
+
+    @Test
+    void refillRejectsWhenRevenueIsNotEnough() {
+        assertThatThrownBy(() -> treasuryService.fundCommission(new BigDecimal("400.01"), "too much", adminUserId))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("revenue");
+        verifyNoInteractions(ledgerService);
+        assertThat(revenueWallet.getBalance()).isEqualTo(new BigDecimal("400.00"));
+    }
+
+    @Test
+    void refillSucceedsWhenAmountEqualsRevenue() {
+        treasuryService.fundCommission(new BigDecimal("400.00"), "all", adminUserId);
+
+        assertThat(revenueWallet.getBalance()).isEqualTo(BigDecimal.ZERO);
     }
 }

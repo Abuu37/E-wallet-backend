@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 
 public record LiquidityCards(
         BigDecimal escrowBankBalance,
-        BigDecimal companyMasterBalance,
+        BigDecimal commissionPoolBalance,
         BigDecimal companyRevenueBalance,
         BigDecimal totalAgentFloatBalance,
         BigDecimal totalAgentCommissionBalance,

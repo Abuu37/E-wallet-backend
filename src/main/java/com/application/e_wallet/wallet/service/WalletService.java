@@ -118,7 +118,7 @@ public class WalletService {
                 .toList();
 
         WalletSummaryStats summary = new WalletSummaryStats(
-                walletRepository.sumBalanceByWalletType(WalletType.COMPANY_MASTER_ACCOUNT),
+                walletRepository.sumBalanceByWalletType(WalletType.COMMISSION),
                 walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT),
                 walletRepository.sumBalanceByWalletType(WalletType.AGENT_COMMISSION),
                 walletRepository.sumBalanceByWalletType(WalletType.CUSTOMER_MAIN)

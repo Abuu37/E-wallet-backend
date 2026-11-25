@@ -3,11 +3,9 @@ package com.application.e_wallet.treasury.controller;
 import com.application.e_wallet.common.dto.ApiResponse;
 import com.application.e_wallet.security.jwt.AuthenticatedUser;
 import com.application.e_wallet.treasury.dto.CommissionTopupRequest;
-import com.application.e_wallet.treasury.dto.MintRequest;
+import com.application.e_wallet.treasury.dto.CommissionTopupResponse;
 import com.application.e_wallet.treasury.dto.TransactionJournalResponse;
 import com.application.e_wallet.treasury.dto.TreasuryOverviewResponse;
-import com.application.e_wallet.treasury.dto.TreasuryRequestResponse;
-import com.application.e_wallet.treasury.entity.RequestType;
 import com.application.e_wallet.treasury.service.TreasuryRequestService;
 import com.application.e_wallet.treasury.service.TreasuryService;
 import jakarta.validation.Valid;
@@ -25,10 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * Mint and commission top-up are maker-checker: these endpoints only RAISE a request. A different
- * staff member then approves it through /treasury/requests/{id}/approve, which posts the journal.
- */
 @RestController
 @RequestMapping("/api/v1/treasury")
 @RequiredArgsConstructor
@@ -50,26 +44,14 @@ public class TreasuryController {
         return ResponseEntity.ok(ok("Transaction journal retrieved successfully", treasuryService.getJournalHistory()));
     }
 
-    @PostMapping("/mint")
-    @PreAuthorize("hasAuthority('FLOAT_MANAGE')")
-    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> requestMint(
-            @Valid @RequestBody MintRequest request, Authentication authentication) {
-        AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        TreasuryRequestResponse response = treasuryRequestService.createStaffRequest(
-                principal.userId(), RequestType.MINT, request.amount(), request.description());
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ok("Mint request submitted. Another staff member must approve it.", response));
-    }
-
+    /** Refill the commission pool from revenue. One finance staff member can do it; no second approver. */
     @PostMapping("/commission/topup")
     @PreAuthorize("hasAuthority('COMMISSION_MANAGE')")
-    public ResponseEntity<ApiResponse<TreasuryRequestResponse>> requestCommissionTopup(
+    public ResponseEntity<ApiResponse<CommissionTopupResponse>> refillCommissionPool(
             @Valid @RequestBody CommissionTopupRequest request, Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        TreasuryRequestResponse response = treasuryRequestService.createStaffRequest(
-                principal.userId(), RequestType.COMMISSION_TOPUP, request.amount(), request.description());
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ok("Commission top-up request submitted. Another staff member must approve it.", response));
+        CommissionTopupResponse response = treasuryService.fundCommission(request.amount(), request.description(), principal.userId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ok("Commission pool refilled from revenue.", response));
     }
 
     private static <T> ApiResponse<T> ok(String message, T data) {

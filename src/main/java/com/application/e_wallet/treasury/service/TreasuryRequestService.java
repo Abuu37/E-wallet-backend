@@ -4,7 +4,6 @@ import com.application.e_wallet.agent.entity.AgentEntity;
 import com.application.e_wallet.agent.repository.AgentRepository;
 import com.application.e_wallet.common.exception.BadRequestException;
 import com.application.e_wallet.treasury.dto.RequestStatusSummary;
-import com.application.e_wallet.treasury.dto.MintRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestCreateRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestDecisionRequest;
 import com.application.e_wallet.treasury.dto.TreasuryRequestListResponse;
@@ -148,34 +147,6 @@ public class TreasuryRequestService {
         return toResponse(treasuryRequest);
     }
 
-    //=================== Staff creates a mint or commission request (maker) ==================//
-    @Transactional
-    public TreasuryRequestResponse createStaffRequest(UUID requesterUserId, RequestType type, BigDecimal amount, String description) {
-        if (type != RequestType.MINT && type != RequestType.COMMISSION_TOPUP) {
-            throw new BadRequestException("Only mint and commission top-up requests are created by staff");
-        }
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Amount must be greater than zero");
-        }
-        if (amount.stripTrailingZeros().scale() > 2) {
-            throw new BadRequestException("Amount must have at most 2 decimal places");
-        }
-        if (description == null || description.isBlank()) {
-            throw new BadRequestException("A description is required");
-        }
-        UserEntity requester = resolveAdmin(requesterUserId);
-        TreasuryRequestEntity saved = treasuryRequestRepository.save(TreasuryRequestEntity.builder()
-                .requestType(type)
-                .amount(amount)
-                .reason(description.trim())
-                .requestedBy(requester)
-                .status(RequestStatus.PENDING)
-                .build());
-        auditService.record(requesterUserId, "TREASURY_REQUEST_CREATE", "TREASURY_REQUEST", saved.getId(), null,
-                details("type", type.name(), "amount", amount.toPlainString(), "ref", saved.getRequestRef()), description, null);
-        return toResponse(saved);
-    }
-
     /** Key/value pairs for an audit entry; null values are skipped so auditing can never break the action. */
     private static java.util.Map<String, Object> details(Object... keyValues) {
         java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
@@ -187,15 +158,10 @@ public class TreasuryRequestService {
         return map;
     }
 
-    private static boolean needsSecondStaff(TreasuryRequestEntity request) {
-        return request.getRequestType() == RequestType.MINT || request.getRequestType() == RequestType.COMMISSION_TOPUP;
-    }
-
-    /** Maker-checker: whoever raised a mint or commission request can neither approve nor reject it. */
-    private static void requireDifferentStaff(TreasuryRequestEntity request, UUID deciderUserId) {
-        if (needsSecondStaff(request) && request.getRequestedBy() != null
-                && request.getRequestedBy().getId().equals(deciderUserId)) {
-            throw new AccessDeniedException("You requested this. Another staff member must approve or reject it.");
+    /** Mint and commission top-up requests existed before float was issued straight from escrow. Old rows still read; they cannot be decided. */
+    private static void rejectLegacyType(TreasuryRequestEntity request) {
+        if (request.getRequestType() == RequestType.MINT || request.getRequestType() == RequestType.COMMISSION_TOPUP) {
+            throw new BadRequestException("This request type is no longer used.");
         }
     }
 
@@ -208,15 +174,11 @@ public class TreasuryRequestService {
             throw new BadRequestException("Only a pending treasury request can be approved");
         }
 
-        requireDifferentStaff(treasuryRequest, adminUserId);
+        rejectLegacyType(treasuryRequest);
         UserEntity admin = resolveAdmin(adminUserId);
 
         String description = "Treasury request " + treasuryRequest.getRequestRef() + " approved";
-        if (treasuryRequest.getRequestType() == RequestType.MINT) {
-            treasuryService.mint(new MintRequest(treasuryRequest.getAmount(), treasuryRequest.getReason()), adminUserId);
-        } else if (treasuryRequest.getRequestType() == RequestType.COMMISSION_TOPUP) {
-            treasuryService.fundCommission(treasuryRequest.getAmount(), treasuryRequest.getReason(), adminUserId);
-        } else if (treasuryRequest.getRequestType() == RequestType.TOPUP) {
+        if (treasuryRequest.getRequestType() == RequestType.TOPUP) {
             treasuryService.topup(treasuryRequest.getAgent().getId(), treasuryRequest.getAmount(), description, adminUserId);
         } else {
             treasuryService.withdraw(treasuryRequest.getAgent().getId(), treasuryRequest.getAmount(), description, adminUserId);
@@ -249,7 +211,7 @@ public class TreasuryRequestService {
         if (request.reason() == null || request.reason().isBlank()) {
             throw new BadRequestException("Rejection reason is required");
         }
-        requireDifferentStaff(treasuryRequest, adminUserId);
+        rejectLegacyType(treasuryRequest);
 
         UserEntity admin = resolveAdmin(adminUserId);
 

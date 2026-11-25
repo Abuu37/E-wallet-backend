@@ -68,7 +68,7 @@ public class DashboardService {
 
         return new LiquidityCards(
                 normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.ESCROW_BANK)),
-                normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.COMPANY_MASTER_ACCOUNT)),
+                normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.COMMISSION)),
                 normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.REVENUE)),
                 normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT)),
                 normalizeScale(walletRepository.sumBalanceByWalletType(WalletType.AGENT_COMMISSION)),

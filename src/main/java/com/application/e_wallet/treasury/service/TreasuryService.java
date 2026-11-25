@@ -12,7 +12,6 @@ import com.application.e_wallet.ledger.repository.TransactionJournalRepository;
 import com.application.e_wallet.ledger.service.LedgerService;
 import com.application.e_wallet.treasury.dto.CommissionTopupResponse;
 import com.application.e_wallet.treasury.dto.JournalLineResponse;
-import com.application.e_wallet.treasury.dto.MintRequest;
 import com.application.e_wallet.treasury.dto.TransactionJournalResponse;
 import com.application.e_wallet.treasury.dto.TreasuryMetrics;
 import com.application.e_wallet.treasury.dto.TreasuryOverviewResponse;
@@ -49,18 +48,16 @@ public class TreasuryService {
     //=================== GET TREASURY OVERVIEW =============
     @Transactional(readOnly = true)
     public TreasuryOverviewResponse getOverview(String createdBy) {
-        WalletEntity companyWallet = walletRepository.findByWalletType(WalletType.COMPANY_MASTER_ACCOUNT)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Company master wallet not initialized"
-                ));
-
-        BigDecimal totalDistributedFloat = walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT);
+        WalletEntity escrowWallet = walletRepository.findByWalletType(WalletType.ESCROW_BANK)
+                .orElseThrow(() -> new IllegalStateException("Escrow bank wallet not initialized"));
 
         return new TreasuryOverviewResponse(
-                companyWallet.getId(),
-                companyWallet.getCurrency(),
-                companyWallet.getBalance(),
-                totalDistributedFloat,
+                escrowWallet.getId(),
+                escrowWallet.getCurrency(),
+                escrowWallet.getBalance(),
+                walletRepository.sumBalanceByWalletType(WalletType.COMMISSION),
+                walletRepository.sumBalanceByWalletType(WalletType.REVENUE),
+                walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT),
                 buildMetrics(),
                 createdBy,
                 OffsetDateTime.now()
@@ -76,40 +73,9 @@ public class TreasuryService {
                 .toList();
     }
 
-    //=================== MINT FLOAT FROM THE BANK ==============
-    @Transactional
-    public void mint(MintRequest request, UUID adminUserId) {
-        if (request.amount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException(
-                    "Mint amount must be positive"
-            );
-        }
-        validateScale(request.amount());
-
-        UserEntity admin = resolveAdmin(adminUserId);
-
-        WalletEntity companyWallet = walletRepository.findByWalletTypeForUpdate(WalletType.COMPANY_MASTER_ACCOUNT)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Company master wallet not initialized"
-                ));
-        WalletEntity escrowWallet = walletRepository.findByWalletTypeForUpdate(WalletType.ESCROW_BANK)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Escrow bank wallet not initialized"
-                ));
-
-        companyWallet.setBalance(normalizeZero(companyWallet.getBalance().add(request.amount())));
-        escrowWallet.setBalance(normalizeZero(escrowWallet.getBalance().add(request.amount())));
-
-        ledgerService.postJournal(LedgerTransactionType.MINT_FLOAT, request.description(), admin, List.of(
-                new JournalLineRequest(escrowWallet.getId(), EntryType.DEBIT, request.amount()),
-                new JournalLineRequest(companyWallet.getId(), EntryType.CREDIT, request.amount())
-        ));
-
-        walletRepository.save(companyWallet);
-        walletRepository.save(escrowWallet);
-    }
-
-    //=================== TOPUP FLOAT TO AN AGENT'S FLOAT WALLET ==============
+    //=================== FLOAT ISSUED FROM ESCROW TO AN AGENT'S FLOAT WALLET ==============
+    // Real money entered the escrow bank account (the agent's deposit was checked), so escrow and the
+    // agent's float both go up. Wallet money is never created any other way.
     @Transactional
     public void topup(UUID agentId, BigDecimal amount, String description, UUID adminUserId) {
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -122,10 +88,9 @@ public class TreasuryService {
         UserEntity admin = resolveAdmin(adminUserId);
         AgentEntity agent = resolveAgent(agentId);
 
-        WalletEntity companyWallet = walletRepository.findByWalletTypeForUpdate(WalletType.COMPANY_MASTER_ACCOUNT)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Company master wallet not initialized"
-                ));
+        WalletEntity escrowWallet = walletRepository.findByWalletTypeForUpdate(WalletType.ESCROW_BANK)
+                .orElseThrow(() -> new IllegalStateException("Escrow bank wallet not initialized"));
+
         WalletEntity agentWallet = walletRepository.findByUserIdAndWalletTypeForUpdate(agent.getUser().getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() -> new BadRequestException(
                         "Agent float wallet not found"
@@ -136,28 +101,23 @@ public class TreasuryService {
                     "Agent float wallet is not active"
             );
         }
-        if (companyWallet.getBalance().compareTo(amount) < 0) {
-            throw new BadRequestException(
-                    "Insufficient unallocated float"
-            );
-        }
 
-        companyWallet.setBalance(normalizeZero(companyWallet.getBalance().subtract(amount)));
+        escrowWallet.setBalance(normalizeZero(escrowWallet.getBalance().add(amount)));
         agentWallet.setBalance(normalizeZero(agentWallet.getBalance().add(amount)));
 
         ledgerService.postJournal(LedgerTransactionType.TOPUP_FLOAT, description, admin, List.of(
-                new JournalLineRequest(companyWallet.getId(), EntryType.DEBIT, amount),
+                new JournalLineRequest(escrowWallet.getId(), EntryType.DEBIT, amount),
                 new JournalLineRequest(agentWallet.getId(), EntryType.CREDIT, amount)
         ));
 
-        walletRepository.save(companyWallet);
+        walletRepository.save(escrowWallet);
         walletRepository.save(agentWallet);
     }
 
-    //=================== TOPUP COMMISSION ACCOUNT FORM COMPANY MASTER WALLET ==============
+    //=================== REFILL THE COMMISSION POOL FROM REVENUE ==============
+    // One finance staff member can do this: the money stays inside the company (revenue to the pool).
     @Transactional
     public CommissionTopupResponse fundCommission(BigDecimal amount, String description, UUID adminUserId) {
-
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException(
                     "Topup amount must be positive"
@@ -167,53 +127,52 @@ public class TreasuryService {
 
         UserEntity admin = resolveAdmin(adminUserId);
 
-        WalletEntity companyWallet = walletRepository.findByWalletTypeForUpdate(WalletType.COMPANY_MASTER_ACCOUNT)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Company master wallet not initialized"
-                ));
+        WalletEntity revenueWallet = walletRepository.findByWalletTypeForUpdate(WalletType.REVENUE)
+                .orElseThrow(() -> new IllegalStateException("Revenue wallet not initialized"));
+
         WalletEntity commissionWallet = walletRepository.findByWalletTypeForUpdate(WalletType.COMMISSION)
                 .orElseThrow(() -> new IllegalStateException(
                         "Commission wallet not initialized"
                 ));
 
-        if (companyWallet.getBalance().compareTo(amount) < 0) {
+        if (revenueWallet.getBalance().compareTo(amount) < 0) {
             throw new BadRequestException(
-                    "Insufficient balance in Company Master Wallet"
+                    "Insufficient revenue to refill the commission pool"
             );
         }
 
-        BigDecimal companyPreviousBalance = companyWallet.getBalance();
+        BigDecimal revenuePreviousBalance = revenueWallet.getBalance();
         BigDecimal commissionPreviousBalance = commissionWallet.getBalance();
 
-        companyWallet.setBalance(
-                normalizeZero(companyPreviousBalance.subtract(amount))
+        revenueWallet.setBalance(
+                normalizeZero(revenuePreviousBalance.subtract(amount))
         );
-
         commissionWallet.setBalance(
                 normalizeZero(commissionPreviousBalance.add(amount))
         );
 
         TransactionJournalEntity journal = ledgerService.postJournal(LedgerTransactionType.TOPUP_COMMISSION, description, admin, List.of(
-                new JournalLineRequest(companyWallet.getId(), EntryType.DEBIT, amount),
+                new JournalLineRequest(revenueWallet.getId(), EntryType.DEBIT, amount),
                 new JournalLineRequest(commissionWallet.getId(), EntryType.CREDIT, amount)
         ));
 
-        walletRepository.save(companyWallet);
+        walletRepository.save(revenueWallet);
         walletRepository.save(commissionWallet);
 
         return new CommissionTopupResponse(
                 journal.getReferenceNumber(),
                 journal.getTransactionType().name(),
                 "COMPLETED",
-                companyWallet.getCurrency(),
+                revenueWallet.getCurrency(),
                 amount,
-                new WalletMovement(companyWallet.getAccountName(), "DEBIT", companyPreviousBalance, companyWallet.getBalance()),
+                new WalletMovement(revenueWallet.getAccountName(), "DEBIT", revenuePreviousBalance, revenueWallet.getBalance()),
                 new WalletMovement(commissionWallet.getAccountName(), "CREDIT", commissionPreviousBalance, commissionWallet.getBalance()),
                 admin.getEmail()
         );
     }
 
-    //=================== WITHDRAW FROM AN AGENT'S FLOAT WALLET ==============
+    //=================== FLOAT PAID OUT FROM AN AGENT'S FLOAT WALLET BACK TO THE BANK ==============
+    // Escrow pays the money out, so escrow and the agent's float both go down.
     @Transactional
     public void withdraw(UUID agentId, BigDecimal amount, String description, UUID adminUserId) {
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -226,10 +185,8 @@ public class TreasuryService {
         UserEntity admin = resolveAdmin(adminUserId);
         AgentEntity agent = resolveAgent(agentId);
 
-        WalletEntity companyWallet = walletRepository.findByWalletTypeForUpdate(WalletType.COMPANY_MASTER_ACCOUNT)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Company master wallet not initialized"
-                ));
+        WalletEntity escrowWallet = walletRepository.findByWalletTypeForUpdate(WalletType.ESCROW_BANK)
+                .orElseThrow(() -> new IllegalStateException("Escrow bank wallet not initialized"));
 
         WalletEntity agentWallet = walletRepository.findByUserIdAndWalletTypeForUpdate(agent.getUser().getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() -> new BadRequestException(
@@ -239,21 +196,20 @@ public class TreasuryService {
         if (agentWallet.getStatus() != WalletStatus.ACTIVE) {
             throw new BadRequestException("Agent float wallet is not active");
         }
-
         if (agentWallet.getBalance().compareTo(amount) < 0) {
             throw new BadRequestException("Insufficient agent float balance");
         }
 
         agentWallet.setBalance(normalizeZero(agentWallet.getBalance().subtract(amount)));
-        companyWallet.setBalance(normalizeZero(companyWallet.getBalance().add(amount)));
+        escrowWallet.setBalance(normalizeZero(escrowWallet.getBalance().subtract(amount)));
 
         ledgerService.postJournal(LedgerTransactionType.AGENT_WITHDRAW, description, admin, List.of(
                 new JournalLineRequest(agentWallet.getId(), EntryType.DEBIT, amount),
-                new JournalLineRequest(companyWallet.getId(), EntryType.CREDIT, amount)
+                new JournalLineRequest(escrowWallet.getId(), EntryType.CREDIT, amount)
         ));
 
         walletRepository.save(agentWallet);
-        walletRepository.save(companyWallet);
+        walletRepository.save(escrowWallet);
     }
 
     private static BigDecimal normalizeZero(BigDecimal amount) {

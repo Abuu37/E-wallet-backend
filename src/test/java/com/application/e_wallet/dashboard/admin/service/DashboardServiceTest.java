@@ -60,7 +60,7 @@ class DashboardServiceTest {
     @Test
     void buildLiquidityCardsSumsEachWalletTypeAndFlagsBalancedLedger() {
         when(walletRepository.sumBalanceByWalletType(WalletType.ESCROW_BANK)).thenReturn(new BigDecimal("50000000.00"));
-        when(walletRepository.sumBalanceByWalletType(WalletType.COMPANY_MASTER_ACCOUNT)).thenReturn(new BigDecimal("18500000.00"));
+        when(walletRepository.sumBalanceByWalletType(WalletType.COMMISSION)).thenReturn(new BigDecimal("18500000.00"));
         when(walletRepository.sumBalanceByWalletType(WalletType.REVENUE)).thenReturn(new BigDecimal("1250000.00"));
         when(walletRepository.sumBalanceByWalletType(WalletType.AGENT_FLOAT)).thenReturn(new BigDecimal("19100000.00"));
         when(walletRepository.sumBalanceByWalletType(WalletType.AGENT_COMMISSION)).thenReturn(new BigDecimal("850000.00"));

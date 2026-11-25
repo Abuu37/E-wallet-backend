@@ -14,6 +14,7 @@ public record CashInResponse(
         AgentLeg agent,
         OffsetDateTime createdAt
 ) {
+
     public record CustomerLeg(
             String phone,
             BigDecimal newBalance
