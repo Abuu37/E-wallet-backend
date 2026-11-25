@@ -5,8 +5,6 @@ import jakarta.validation.constraints.NotBlank;
 
 public record StaffCreationRequest(
 
-        @NotBlank
-        String username,
 
         @NotBlank
         String firstName,

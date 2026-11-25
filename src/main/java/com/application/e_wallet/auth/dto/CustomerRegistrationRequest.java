@@ -20,10 +20,6 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class CustomerRegistrationRequest {
 
-    @NotBlank(message = "Username is required")
-    @Size(max = 100, message = "Username cannot exceed 100 characters")
-    private String username;
-
     @NotBlank(message = "First name is required")
     @Size(min = 1, max = 100, message = "First name must be between 1 and 100 characters")
     @Pattern(

@@ -42,13 +42,19 @@ class CustomerServiceTest {
     @Mock private PhoneNumberNormalizer phoneNumberNormalizer;
     @Mock private ApplicationEventPublisher eventPublisher;
 
-    @InjectMocks
+        @Mock private com.application.e_wallet.common.identifier.IdentifierService identifierService;
+
+@InjectMocks
     private CustomerService customerService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubIdentifiers() {
+        org.mockito.Mockito.lenient().when(identifierService.nextCustomerRef()).thenReturn("CU-000001");
+    }
 
     @Test
     void registerCustomerBuildsUserAndCustomerFromRequest() {
         CustomerRegistrationRequest request = new CustomerRegistrationRequest();
-        request.setUsername("jdoe");
         request.setFirstName("Jane");
         request.setMiddleName("M");
         request.setLastName("Doe");
@@ -82,7 +88,7 @@ class CustomerServiceTest {
         verify(userRepository).save(userCaptor.capture());
         UserEntity savedUser = userCaptor.getValue();
         assertThat(savedUser.getRole()).isEqualTo(customerRole);
-        assertThat(savedUser.getLoginUsername()).isEqualTo("jdoe");
+        assertThat(savedUser.getLoginUsername()).isEqualTo("CU-000001");
 
         ArgumentCaptor<CustomerEntity> customerCaptor = ArgumentCaptor.forClass(CustomerEntity.class);
         verify(customerRepository).save(customerCaptor.capture());
@@ -90,31 +96,6 @@ class CustomerServiceTest {
         assertThat(savedCustomer.getFirstName()).isEqualTo("Jane");
         assertThat(savedCustomer.getLastName()).isEqualTo("Doe");
         assertThat(savedCustomer.getNidaNumber()).isEqualTo("1234567890123456");
-    }
-
-    @Test
-    void registerCustomerThrowsDuplicationResourceExceptionOnDuplicateUsername() {
-        CustomerRegistrationRequest request = new CustomerRegistrationRequest();
-        request.setUsername("jdoe");
-        request.setFirstName("Jane");
-        request.setMiddleName("M");
-        request.setLastName("Doe");
-        request.setEmail("jane.doe@example.com");
-        request.setPhone("0712345678");
-        request.setNidaNumber("1234567890123456");
-        request.setDateOfBirth(LocalDate.of(1995, 1, 1));
-        request.setAddress("123 Main St");
-
-        lenient().when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        lenient().when(userRepository.existsByPhone(anyString())).thenReturn(false);
-        lenient().when(phoneNumberNormalizer.normalize("0712345678")).thenReturn("+255712345678");
-        when(userRepository.existsByLoginUsername("jdoe")).thenReturn(true);
-
-        assertThatThrownBy(() -> customerService.registerCustomer(request))
-                .isInstanceOf(DuplicationResourceException.class)
-                .hasMessageContaining("Username");
-
-        verify(userRepository, never()).save(any());
     }
 
     @Test

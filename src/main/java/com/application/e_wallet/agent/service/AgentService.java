@@ -54,7 +54,8 @@ import java.util.concurrent.ThreadLocalRandom;
 //TODO: 1. One time pin expired automatically after been used 2. Set pin and forget pin APIs
 @Service
 @RequiredArgsConstructor
-public class    AgentService {
+public class AgentService {
+    private final com.application.e_wallet.common.identifier.IdentifierService identifierService;
 
     private static final int ONE_TIME_PIN_LENGTH = 4;
     private static final String FLOAT_ACCOUNT_PREFIX = "01";
@@ -90,10 +91,6 @@ public class    AgentService {
             throw new DuplicationResourceException("Phone already exists");
         }
 
-        if (userRepository.existsByLoginUsername(request.username().trim())) {
-            throw new DuplicationResourceException("Username already exists");
-        }
-
         RoleEntity agentRole = roleRepository.findByName("AGENT")
                 .orElseThrow(() -> new IllegalStateException("AGENT role not found"));
 
@@ -113,8 +110,10 @@ public class    AgentService {
         String middleName = request.middleName() != null ? request.middleName().trim() : "";
         String oneTimePin = otpGenerator.generate(ONE_TIME_PIN_LENGTH);
 
+        String agentNumber = identifierService.nextAgentNumber();
+
         UserEntity user = UserEntity.builder()
-                .loginUsername(request.username().trim())
+                .loginUsername(agentNumber)
                 .email(email)
                 .phone(normalizedPhone)
                 .pinHash(pinEncoder.encode(oneTimePin))
@@ -126,7 +125,7 @@ public class    AgentService {
 
         AgentEntity agent = AgentEntity.builder()
                 .user(savedUser)
-                .agentNumber(generateAgentCode())
+                .agentNumber(agentNumber)
                 .firstName(request.firstName().trim())
                 .middleName(middleName)
                 .lastName(request.lastName().trim())
@@ -449,15 +448,6 @@ public class    AgentService {
                         line.getJournal().getCreatedAt()
                 ))
                 .toList();
-    }
-
-    private String generateAgentCode() {
-        String code;
-        do {
-            code = String.valueOf(ThreadLocalRandom.current().nextInt(100_000, 1_000_000));
-        } while (agentRepository.existsByAgentNumber(code));
-
-        return code;
     }
 
     // 12-digit account number, "01" lead (shared with CUSTOMER_MAIN by design), retried on collision.

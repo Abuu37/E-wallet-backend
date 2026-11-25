@@ -12,8 +12,6 @@ import java.time.LocalDate;
 
 public record AgentCreationRequest(
 
-        @NotBlank
-        String username,
 
         @NotBlank
         String firstName,

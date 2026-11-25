@@ -50,13 +50,20 @@ class StaffServiceTest {
     @Mock private PasswordEncoder pinEncoder;
     @Mock private EmailService emailService;
 
-    @InjectMocks
+        @Mock private com.application.e_wallet.common.identifier.IdentifierService identifierService;
+
+@InjectMocks
     private StaffService staffService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubIdentifiers() {
+        org.mockito.Mockito.lenient().when(identifierService.nextStaffNumber()).thenReturn("ST-0005");
+    }
 
     @Test
     void createStaffBuildsUserAndStaffProfileWithCreatedBy() {
         StaffCreationRequest request = new StaffCreationRequest(
-                "jdoe", "Jane", "M", "Doe", "jane.doe@example.com", "0712345678", "Accountant"
+                "Jane", "M", "Doe", "jane.doe@example.com", "0712345678", "Accountant"
         );
 
         RoleEntity adminRole = RoleEntity.builder().id(UUID.randomUUID()).name("ADMIN").build();
@@ -79,7 +86,6 @@ class StaffServiceTest {
             return user;
         });
 
-        when(staffRepository.existsByStaffNo(anyString())).thenReturn(false);
         UUID staffId = UUID.randomUUID();
         when(staffRepository.save(any())).thenAnswer(inv -> {
             StaffEntity staff = inv.getArgument(0);
@@ -100,27 +106,7 @@ class StaffServiceTest {
         ArgumentCaptor<UserEntity> userCaptor = ArgumentCaptor.forClass(UserEntity.class);
         verify(userRepository).save(userCaptor.capture());
         assertThat(userCaptor.getValue().getRole()).isEqualTo(adminRole);
-        assertThat(userCaptor.getValue().getLoginUsername()).isEqualTo("jdoe");
-    }
-
-    @Test
-    void createStaffThrowsDuplicationResourceExceptionOnDuplicateUsername() {
-        StaffCreationRequest request = new StaffCreationRequest(
-                "jdoe", "Jane", "M", "Doe", "jane.doe@example.com", "0712345678", "Accountant"
-        );
-
-        lenient().when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        lenient().when(userRepository.existsByPhone(anyString())).thenReturn(false);
-        lenient().when(phoneNumberNormalizer.normalize("0712345678")).thenReturn("+255712345678");
-        when(userRepository.existsByLoginUsername("jdoe")).thenReturn(true);
-
-        UUID adminUserId = UUID.randomUUID();
-
-        assertThatThrownBy(() -> staffService.createStaff(adminUserId, request))
-                .isInstanceOf(DuplicationResourceException.class)
-                .hasMessageContaining("Username");
-
-        verify(userRepository, never()).save(any());
+        assertThat(userCaptor.getValue().getLoginUsername()).isEqualTo("ST-0005");
     }
 
     @Test

@@ -14,7 +14,7 @@ class AgentCreationRequestTest {
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     private AgentCreationRequest request(String middleName) {
-        return new AgentCreationRequest("agent1", "Rachel", middleName, "Saho", "rachel@example.com", "+255712616240",
+        return new AgentCreationRequest("Rachel", middleName, "Saho", "rachel@example.com", "+255712616240",
                 Gender.FEMALE, LocalDate.of(1990, 1, 1), "TZ07", "TZ07-01", "Saho Shop", "123456789");
     }
 

@@ -69,13 +69,20 @@ class AgentServiceTest {
     @Mock private PasswordEncoder pinEncoder;
     @Mock private EmailService emailService;
 
-    @InjectMocks
+        @Mock private com.application.e_wallet.common.identifier.IdentifierService identifierService;
+
+@InjectMocks
     private AgentService agentService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void stubIdentifiers() {
+        org.mockito.Mockito.lenient().when(identifierService.nextAgentNumber()).thenReturn("AG-10234");
+    }
 
     @Test
     void createAgentCreatesBothFloatAndCommissionWallets() {
         AgentCreationRequest request = new AgentCreationRequest(
-                "jane.doe", "Jane", "M", "Doe", "jane.doe@example.com", "0712345678",
+                "Jane", "M", "Doe", "jane.doe@example.com", "0712345678",
                 Gender.FEMALE, LocalDate.of(1995, 1, 1), "TZ01", "TZ0101",
                 "Jane's Shop", "TIN-12345"
         );
@@ -105,7 +112,6 @@ class AgentServiceTest {
         });
 
         UUID agentId = UUID.randomUUID();
-        when(agentRepository.existsByAgentNumber(anyString())).thenReturn(false);
         when(agentRepository.save(any())).thenAnswer(inv -> {
             AgentEntity agent = inv.getArgument(0);
             agent.setId(agentId);
@@ -124,28 +130,6 @@ class AgentServiceTest {
         List<WalletType> savedTypes = captor.getAllValues().stream().map(WalletEntity::getWalletType).toList();
         assertThat(savedTypes).containsExactlyInAnyOrder(WalletType.AGENT_FLOAT, WalletType.AGENT_COMMISSION);
         assertThat(captor.getAllValues()).allMatch(w -> w.getBalance().compareTo(BigDecimal.ZERO) == 0);
-    }
-
-    @Test
-    void createAgentThrowsDuplicationResourceExceptionOnDuplicateUsername() {
-        AgentCreationRequest request = new AgentCreationRequest(
-                "jane.doe", "Jane", "M", "Doe", "jane.doe@example.com", "0712345678",
-                Gender.FEMALE, LocalDate.of(1995, 1, 1), "TZ01", "TZ0101",
-                "Jane's Shop", "TIN-12345"
-        );
-
-        lenient().when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        lenient().when(userRepository.existsByPhone(anyString())).thenReturn(false);
-        lenient().when(phoneNumberNormalizer.normalize("0712345678")).thenReturn("+255712345678");
-        when(userRepository.existsByLoginUsername("jane.doe")).thenReturn(true);
-
-        UUID adminUserId = UUID.randomUUID();
-
-        assertThatThrownBy(() -> agentService.createAgent(adminUserId, request))
-                .isInstanceOf(DuplicationResourceException.class)
-                .hasMessageContaining("Username");
-
-        verify(userRepository, never()).save(any());
     }
 
     @Test

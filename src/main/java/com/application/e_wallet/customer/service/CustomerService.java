@@ -43,6 +43,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class CustomerService {
+    private final com.application.e_wallet.common.identifier.IdentifierService identifierService;
 
     private final CustomerRepository customerRepository;
     private final UserRepository userRepository;
@@ -68,15 +69,11 @@ public class CustomerService {
             throw new DuplicationResourceException("Phone already exists");
         }
 
-        if (userRepository.existsByLoginUsername(request.getUsername().trim())) {
-            throw new DuplicationResourceException("Username already exists");
-        }
-
         RoleEntity customerRole = roleRepository.findByName("CUSTOMER")
                 .orElseThrow(() -> new IllegalStateException("CUSTOMER role not found"));
 
         UserEntity user = UserEntity.builder()
-                .loginUsername(request.getUsername().trim())
+                .loginUsername(identifierService.nextCustomerRef())
                 .email(request.getEmail().trim().toLowerCase())
                 .phone(normalizedPhone)
                 .status(UserStatus.AWAITING_PIN)

@@ -31,6 +31,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class StaffService {
+    private final com.application.e_wallet.common.identifier.IdentifierService identifierService;
 
     private static final int ONE_TIME_PIN_LENGTH = 4;
     private static final String STAFF_ROLE = "ADMIN";
@@ -59,10 +60,6 @@ public class StaffService {
             throw new DuplicationResourceException("Phone already exists");
         }
 
-        if (userRepository.existsByLoginUsername(request.username().trim())) {
-            throw new DuplicationResourceException("Username already exists");
-        }
-
         RoleEntity staffRole = roleRepository.findByName(STAFF_ROLE)
                 .orElseThrow(() -> new IllegalStateException("ADMIN role not found"));
 
@@ -72,8 +69,10 @@ public class StaffService {
         String middleName = request.middleName() != null ? request.middleName().trim() : "";
         String oneTimePin = otpGenerator.generate(ONE_TIME_PIN_LENGTH);
 
+        String staffNo = identifierService.nextStaffNumber();
+
         UserEntity user = UserEntity.builder()
-                .loginUsername(request.username().trim())
+                .loginUsername(staffNo)
                 .email(email)
                 .phone(normalizedPhone)
                 .pinHash(pinEncoder.encode(oneTimePin))
@@ -85,7 +84,7 @@ public class StaffService {
 
         StaffEntity staff = StaffEntity.builder()
                 .user(savedUser)
-                .staffNo(generateStaffNumber())
+                .staffNo(staffNo)
                 .jobTitle(request.jobTitle().trim())
                 .firstName(request.firstName().trim())
                 .middleName(middleName)
@@ -216,13 +215,4 @@ public class StaffService {
         );
     }
 
-    private String generateStaffNumber() {
-        String staffNo;
-        do {
-            staffNo = "STF-" + UUID.randomUUID().toString().replace("-", "")
-                    .substring(0, 12).toUpperCase();
-        } while (staffRepository.existsByStaffNo(staffNo));
-
-        return staffNo;
-    }
 }

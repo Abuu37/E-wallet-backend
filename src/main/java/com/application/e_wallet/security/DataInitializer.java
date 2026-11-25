@@ -24,6 +24,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "app.initial-admin", name = "enabled", havingValue = "true")
 public class DataInitializer implements CommandLineRunner {
+    private final com.application.e_wallet.common.identifier.IdentifierService identifierService;
 
     private static final String ADMIN_ROLE = "ADMIN";
 
@@ -36,9 +37,6 @@ public class DataInitializer implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final StaffRepository staffRepository;
     private final PasswordEncoder pinEncoder;
-
-    @Value("${app.initial-admin.username}")
-    private String username;
 
     @Value("${app.initial-admin.first-name}")
     private String firstName;
@@ -78,8 +76,10 @@ public class DataInitializer implements CommandLineRunner {
                                 "ADMIN role not found"
                         ));
 
+        String staffNo = identifierService.nextStaffNumber();
+
         UserEntity admin = UserEntity.builder()
-                .loginUsername(username)
+                .loginUsername(staffNo)
                 .email(email)
                 .phone(phone)
                 .pinHash(pinEncoder.encode(pin))
@@ -92,7 +92,7 @@ public class DataInitializer implements CommandLineRunner {
         // Bootstrap record - no acting admin created it, so createdBy stays null.
         StaffEntity staff = StaffEntity.builder()
                 .user(savedAdmin)
-                .staffNo(generateStaffNumber())
+                .staffNo(staffNo)
                 .jobTitle(BOOTSTRAP_JOB_TITLE)
                 .firstName(firstName)
                 .middleName(middleName)
@@ -108,13 +108,4 @@ public class DataInitializer implements CommandLineRunner {
         log.info("Initial admin account created (email={})", email);
     }
 
-    private String generateStaffNumber() {
-        String staffNo;
-        do {
-            staffNo = "STF-" + UUID.randomUUID().toString().replace("-", "")
-                    .substring(0, 12).toUpperCase();
-        } while (staffRepository.existsByStaffNo(staffNo));
-
-        return staffNo;
-    }
 }
