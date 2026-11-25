@@ -129,6 +129,14 @@ public class AgentController {
         return ResponseEntity.ok(body);
     }
 
+    /** Agents have no NIDA on file, so a forgotten PIN is reset by an administrator. */
+    @PostMapping("/{agentId}/reset-pin")
+    @PreAuthorize("hasAuthority('AGENT_MANAGE')")
+    public ResponseEntity<Void> resetPin(@PathVariable UUID agentId) {
+        agentService.resetPin(agentId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/{agentId}/status")
     @PreAuthorize("hasAuthority('USER_UPDATE')")
     public ResponseEntity<ApiResponse<AgentUpdateResponse>> updateAgentStatus(

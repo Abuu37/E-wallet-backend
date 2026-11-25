@@ -84,7 +84,7 @@ class AuthHttpSecurityTest {
 
     @Test
     void repeatedForgotPinRequestsAreRateLimitedWith429AndRetryAfter() throws Exception {
-        String body = "{\"email\":\"ratelimit-probe@example.com\"}";
+        String body = "{\"phone\":\"+255700000001\",\"nidaLast4\":\"1234\"}";
         int last = 0;
         MvcResult limited = null;
         for (int i = 0; i < 8; i++) {

@@ -320,4 +320,27 @@ class AgentServiceTest {
         assertThatThrownBy(() -> agentService.getOwnProfile(callerUserId))
                 .isInstanceOf(BadRequestException.class);
     }
+
+    @Test
+    void anAdministratorCanResetAnAgentPinWhichSendsANewOneTimePinAndEndsEverySession() {
+        UUID agentId = UUID.randomUUID();
+        UserEntity user = UserEntity.builder().id(UUID.randomUUID()).email("agent@example.com").phone("+255712345678")
+                .pinHash("old").status(com.application.e_wallet.user.entity.UserStatus.ACTIVE).failedPinAttempts(3).build();
+        com.application.e_wallet.agent.entity.AgentEntity agent = com.application.e_wallet.agent.entity.AgentEntity.builder()
+                .id(agentId).user(user).businessName("Mrema Shop").agentNumber("AG-10234").build();
+        when(agentRepository.findById(agentId)).thenReturn(java.util.Optional.of(agent));
+        when(otpGenerator.generate(org.mockito.ArgumentMatchers.anyInt())).thenReturn("7391");
+        when(pinEncoder.encode("7391")).thenReturn("one-time-hash");
+
+        agentService.resetPin(agentId);
+
+        assertThat(user.getPinHash()).isEqualTo("one-time-hash");
+        assertThat(user.getStatus()).isEqualTo(com.application.e_wallet.user.entity.UserStatus.PIN_CHANGE_REQUIRED);
+        assertThat(user.getFailedPinAttempts()).isZero();
+        verify(userSessionRepository).deleteAllByUserId(user.getId());
+        verify(notifier).notify(org.mockito.ArgumentMatchers.eq(com.application.e_wallet.notification.NotificationKey.S4),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.argThat(p -> "7391".equals(p.get("pin")) && "AG-10234".equals(p.get("agentId"))));
+        verify(auditService).recordAsCurrentUser(org.mockito.ArgumentMatchers.eq("AGENT_PIN_RESET"), org.mockito.ArgumentMatchers.eq("AGENT"),
+                org.mockito.ArgumentMatchers.eq(agentId), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+    }
 }

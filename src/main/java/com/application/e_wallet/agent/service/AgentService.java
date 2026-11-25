@@ -180,6 +180,26 @@ public class AgentService {
         return toOnboardResponse(savedAgent, savedUser, savedFloatWallet, savedCommissionWallet);
     }
 
+    //======== Administrator resets an agent's PIN: a new one-time PIN by email, every session ended ========
+    @Transactional
+    public void resetPin(UUID agentId) {
+        AgentEntity agent = findAgentOrThrow(agentId);
+        UserEntity user = agent.getUser();
+
+        String oneTimePin = otpGenerator.generate(ONE_TIME_PIN_LENGTH);
+        user.setPinHash(pinEncoder.encode(oneTimePin));
+        user.setStatus(UserStatus.PIN_CHANGE_REQUIRED);
+        user.setFailedPinAttempts(0);
+        user.setUnlockRequiresOtp(false);
+        user.setLockedUntil(null);
+        userRepository.save(user);
+        userSessionRepository.deleteAllByUserId(user.getId());
+
+        auditService.recordAsCurrentUser("AGENT_PIN_RESET", "AGENT", agent.getId(), null, null, "PIN reset by an administrator");
+        notifier.notify(com.application.e_wallet.notification.NotificationKey.S4, com.application.e_wallet.notification.NotificationRecipient.of(user),
+                java.util.Map.of("name", agent.getBusinessName(), "agentId", agent.getAgentNumber(), "pin", oneTimePin));
+    }
+
     //======================= List AN AGENT ====================//
     @Transactional(readOnly = true)
     public AgentListResponse listAgents(Pageable pageable, AgentStatus status) {

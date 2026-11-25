@@ -116,4 +116,12 @@ public class StaffController {
 
         return ResponseEntity.ok(body);
     }
+
+    /** Staff have no NIDA on file, so a forgotten PIN is reset by an administrator. */
+    @PostMapping("/{staffId}/reset-pin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> resetPin(@PathVariable UUID staffId) {
+        staffService.resetPin(staffId);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -51,7 +51,9 @@ class StaffServiceTest {
 
         @Mock private com.application.e_wallet.common.identifier.IdentifierService identifierService;
 
-@InjectMocks
+@Mock private com.application.e_wallet.audit.service.AuditService auditService;
+
+    @InjectMocks
     private StaffService staffService;
 
     @org.junit.jupiter.api.BeforeEach
@@ -157,5 +159,25 @@ class StaffServiceTest {
         assertThat(user.getStatus()).isEqualTo(UserStatus.DISABLED);
         assertThat(staff.getStatus()).isEqualTo(StaffStatus.DISABLED);
         verify(userSessionRepository).deleteAllByUserId(userId);
+    }
+
+    @Test
+    void anAdministratorCanResetAStaffPinWhichSendsANewOneTimePinAndEndsEverySession() {
+        UUID staffId = UUID.randomUUID();
+        UserEntity user = UserEntity.builder().id(UUID.randomUUID()).email("staff@example.com").phone("+255712345678")
+                .pinHash("old").status(com.application.e_wallet.user.entity.UserStatus.ACTIVE).build();
+        com.application.e_wallet.staff.entity.StaffEntity staff = com.application.e_wallet.staff.entity.StaffEntity.builder()
+                .id(staffId).user(user).staffNo("ST-0005").build();
+        org.mockito.Mockito.when(staffRepository.findById(staffId)).thenReturn(java.util.Optional.of(staff));
+        org.mockito.Mockito.when(otpGenerator.generate(org.mockito.ArgumentMatchers.anyInt())).thenReturn("7391");
+        org.mockito.Mockito.when(pinEncoder.encode("7391")).thenReturn("one-time-hash");
+
+        staffService.resetPin(staffId);
+
+        org.assertj.core.api.Assertions.assertThat(user.getPinHash()).isEqualTo("one-time-hash");
+        org.assertj.core.api.Assertions.assertThat(user.getStatus()).isEqualTo(com.application.e_wallet.user.entity.UserStatus.PIN_CHANGE_REQUIRED);
+        org.mockito.Mockito.verify(userSessionRepository).deleteAllByUserId(user.getId());
+        org.mockito.Mockito.verify(notifier).notify(org.mockito.ArgumentMatchers.eq(com.application.e_wallet.notification.NotificationKey.S5),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.argThat(p -> "7391".equals(p.get("pin"))));
     }
 }

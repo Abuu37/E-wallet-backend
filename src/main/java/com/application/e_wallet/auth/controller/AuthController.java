@@ -64,21 +64,22 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Void>> changePin(@Valid @RequestBody ChangePinRequest request, Authentication authentication, HttpServletRequest httpRequest) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         rateLimitingService.enforce(httpRequest.getRemoteAddr(), "change-pin:" + principal.email());
-        authService.changePin(principal.email(), request);
+        authService.changePin(principal.userId(), request);
         return ResponseEntity.ok(ok("PIN changed successfully", null));
     }
 
     @PostMapping("/forgot-pin")
     public ResponseEntity<ApiResponse<Void>> forgotPin(@Valid @RequestBody ForgotPinRequest request, HttpServletRequest httpRequest) {
-        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "forgot-pin:" + request.email());
-        pinResetService.forgotPin(request.email());
-        return ResponseEntity.ok(ok("OTP has been sent to your email.", null));
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "forgot-pin:" + request.phone());
+        pinResetService.forgotPin(request.phone(), request.nidaLast4());
+        // The same answer whether or not the details matched, and no email is shown.
+        return ResponseEntity.ok(ok("If these details match an account, we've sent a code to the email on file.", null));
     }
 
     @PostMapping("/reset-pin")
     public ResponseEntity<ApiResponse<Void>> resetPin(@Valid @RequestBody ResetPinRequest request, HttpServletRequest httpRequest) {
-        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "reset-pin:" + request.email());
-        pinResetService.resetPin(request.email(), request.otp(), request.newPin());
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "reset-pin:" + request.phone());
+        pinResetService.resetPin(request.phone(), request.otp(), request.newPin());
         return ResponseEntity.ok(ok("PIN reset successfully", null));
     }
 

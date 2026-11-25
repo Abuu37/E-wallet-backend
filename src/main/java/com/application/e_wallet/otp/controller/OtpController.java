@@ -28,14 +28,14 @@ public class OtpController {
     @PostMapping("/verify")
     public ResponseEntity<ApiResponse<Void>> verifyOtp(@Valid @RequestBody VerifyOtpRequest request, HttpServletRequest httpRequest) {
 
-        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "otp-verify:" + request.email());
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "otp-verify:" + request.phone());
 
-        otpService.verifyOtp(request.email(), request.otp());
+        otpService.verifyOtp(request.phone(), request.otp());
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("Email verified. Please set your PIN to activate your account.")
+                .message("Code accepted.")
                 .build();
 
         return ResponseEntity.ok(body);
@@ -44,14 +44,14 @@ public class OtpController {
     @PostMapping("/resend")
     public ResponseEntity<ApiResponse<Void>> resendOtp(@Valid @RequestBody ResendOtpRequest request, HttpServletRequest httpRequest) {
 
-        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "otp-resend:" + request.email());
+        rateLimitingService.enforce(httpRequest.getRemoteAddr(), "otp-resend:" + request.phone());
 
-        otpService.resendOtp(request.email());
+        otpService.resendOtp(request.phone());
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .timestamp(Instant.now())
                 .status(HttpStatus.OK.value())
-                .message("New OTP has been sent to your email.")
+                .message("If this number can receive a code, we sent a new one to the email on file.")
                 .build();
 
         return ResponseEntity.ok(body);

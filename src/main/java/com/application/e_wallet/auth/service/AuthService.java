@@ -288,9 +288,9 @@ public class AuthService {
      * CHANGE PIN RESPONSE
      */
     @Transactional
-    public void changePin(String email, ChangePinRequest request){
+    public void changePin(java.util.UUID userId, ChangePinRequest request){
 
-        UserEntity userEntity = userRepository.findByEmail(email)
+        UserEntity userEntity = userRepository.findById(userId)
                 .orElseThrow(() -> new AuthenticationException("User account not found"));
 
         accountStatusService.validateLoginStatus(userEntity);
@@ -316,6 +316,7 @@ public class AuthService {
         }
         userRepository.save(userEntity);
         userSessionRepository.deleteAllByUserId(userEntity.getId());
+        notifier.notify(com.application.e_wallet.notification.NotificationKey.S3, com.application.e_wallet.notification.NotificationRecipient.of(userEntity), java.util.Map.of());
     }
 
     //================= logout ====================

@@ -44,6 +44,7 @@ public class StaffService {
     private final OtpGenerator otpGenerator;
     private final PasswordEncoder pinEncoder;
     private final com.application.e_wallet.notification.Notifier notifier;
+    private final com.application.e_wallet.audit.service.AuditService auditService;
 
     //======================== CREATE A STAFF MEMBER ==================== //
     @Transactional
@@ -216,4 +217,24 @@ public class StaffService {
         );
     }
 
+
+    //======== Administrator resets a staff member's PIN: a new one-time PIN by email, every session ended ========
+    @Transactional
+    public void resetPin(UUID staffId) {
+        StaffEntity staff = staffRepository.findById(staffId)
+                .orElseThrow(() -> new BadRequestException("Staff member not found"));
+        UserEntity user = staff.getUser();
+
+        String oneTimePin = otpGenerator.generate(ONE_TIME_PIN_LENGTH);
+        user.setPinHash(pinEncoder.encode(oneTimePin));
+        user.setStatus(UserStatus.PIN_CHANGE_REQUIRED);
+        user.setFailedPinAttempts(0);
+        user.setUnlockRequiresOtp(false);
+        user.setLockedUntil(null);
+        userRepository.save(user);
+        userSessionRepository.deleteAllByUserId(user.getId());
+
+        auditService.recordAsCurrentUser("STAFF_PIN_RESET", "STAFF", staff.getId(), null, null, "PIN reset by an administrator");
+        notifier.notify(com.application.e_wallet.notification.NotificationKey.S5, com.application.e_wallet.notification.NotificationRecipient.of(user), java.util.Map.of("pin", oneTimePin));
+    }
 }
