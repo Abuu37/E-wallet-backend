@@ -27,6 +27,8 @@ public class KycService {
     private final CustomerRepository customerRepository;
     private final KycProvider kycProvider;
     private final KycLimitsProperties limits;
+    private final com.application.e_wallet.limits.LimitService limitService;
+    private final com.application.e_wallet.wallet.repository.WalletRepository walletRepository;
 
     /** Returns the short-lived link token the browser opens. */
     @Transactional
@@ -98,7 +100,9 @@ public class KycService {
                 verified ? "VERIFIED" : "BASIC",
                 tier.getPerPayment(), tier.getDaily(), tier.getMaxBalance(),
                 toLimits(limits.getBasic()), toLimits(limits.getVerified()),
-                true);
+                true,
+                walletRepository.findByUserIdAndWalletType(customer.getUser().getId(), com.application.e_wallet.wallet.entity.WalletType.CUSTOMER_MAIN)
+                        .map(w -> limitService.usedToday(w.getId())).orElse(java.math.BigDecimal.ZERO));
     }
 
     private static KycStatusResponse.Limits toLimits(KycLimitsProperties.Tier tier) {

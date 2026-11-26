@@ -14,7 +14,9 @@ public record KycStatusResponse(
         BigDecimal maxBalance,
         Limits basic,
         Limits verified,
-        boolean sandbox
+        boolean sandbox,
+        /** What this wallet has already sent today, towards the daily limit. */
+        BigDecimal usedToday
 ) {
 
     public record Limits(BigDecimal perPayment, BigDecimal daily, BigDecimal maxBalance) {
