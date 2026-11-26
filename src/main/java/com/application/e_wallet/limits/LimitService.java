@@ -64,6 +64,14 @@ public class LimitService {
         }
     }
 
+    /** Adding money from a bank: within the per-payment limit. The max balance is checked with {@link #checkReceive}. */
+    public void checkPerPayment(KycStatus status, BigDecimal amount) {
+        Limits limits = limitsFor(status);
+        if (amount.compareTo(limits.perPayment()) > 0) {
+            throw new BadRequestException("This is over your " + tzs(limits.perPayment()) + " TZS per-payment limit." + raise(status == KycStatus.VERIFIED));
+        }
+    }
+
     /** Before money lands in a wallet: the balance after must stay under the max balance. */
     public void checkReceive(BigDecimal currentBalance, KycStatus status, BigDecimal incoming) {
         Limits limits = limitsFor(status);

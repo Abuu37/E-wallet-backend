@@ -204,9 +204,10 @@ public class TransactionService {
         WalletEntity other = incoming ? t.getSenderWallet() : t.getReceiverWallet();
         String name = other.getAccountName() == null ? "" : other.getAccountName();
         int suffix = name.indexOf(" — ");
+        boolean bank = t.getCounterpartyLabel() != null;
         return new MyTransactionItem(t.getReferenceNo(), t.getTransactionType(), incoming ? "IN" : "OUT", t.getAmount(), t.getFee(),
-                t.getStatus(), t.getCreatedAt(), suffix == -1 ? name : name.substring(0, suffix),
-                NotificationFormat.maskedPhone(other.getUser().getPhone()), incoming && t.getMatchCode() != null ? null : t.getMatchCode());
+                t.getStatus(), t.getCreatedAt(), bank ? t.getCounterpartyLabel() : suffix == -1 ? name : name.substring(0, suffix),
+                bank || other.getUser() == null ? "" : NotificationFormat.maskedPhone(other.getUser().getPhone()), incoming && t.getMatchCode() != null ? null : t.getMatchCode());
     }
 
     //=================== VIEW TRANSACTIONS: "all" (admin) or "own" (customer/agent) ==============
@@ -302,8 +303,8 @@ public class TransactionService {
                 receiver.getAccountName(),
                 transaction.getExternalReference(),
                 ownWalletIds == null ? null : (incoming ? "IN" : "OUT"),
-                ownWalletIds == null ? null : (suffix == -1 ? otherName : otherName.substring(0, suffix)),
-                ownWalletIds == null ? null : other.getUser() == null ? "" : com.application.e_wallet.notification.NotificationFormat.maskedPhone(other.getUser().getPhone()),
+                ownWalletIds == null ? null : transaction.getCounterpartyLabel() != null ? transaction.getCounterpartyLabel() : (suffix == -1 ? otherName : otherName.substring(0, suffix)),
+                ownWalletIds == null ? null : transaction.getCounterpartyLabel() != null || other.getUser() == null ? "" : com.application.e_wallet.notification.NotificationFormat.maskedPhone(other.getUser().getPhone()),
                 incoming ? null : transaction.getMatchCode()
         );
     }
