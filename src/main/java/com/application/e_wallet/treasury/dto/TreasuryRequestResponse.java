@@ -24,6 +24,7 @@ public record TreasuryRequestResponse(
         OffsetDateTime createdAt,
         String externalReference,
         UUID requestedByUserId,
-        String requestedByUserName
+        String requestedByUserName,
+        boolean hasSlip
 ) {
 }

@@ -56,6 +56,7 @@ class TreasuryRequestServiceTest {
     @Mock private StaffRepository staffRepository;
     @Mock private WalletRepository walletRepository;
     @Mock private TreasuryService treasuryService;
+    @Mock private com.application.e_wallet.notification.Notifier notifier;
     @InjectMocks private TreasuryRequestService treasuryRequestService;
 
     private UUID requestId;

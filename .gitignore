@@ -43,3 +43,6 @@ logs/
 
 ### Git worktrees ###
 .worktrees/
+
+# deposit slips
+/uploads/

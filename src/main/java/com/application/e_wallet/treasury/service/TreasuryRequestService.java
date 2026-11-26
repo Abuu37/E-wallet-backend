@@ -45,6 +45,7 @@ public class TreasuryRequestService {
     private final WalletRepository walletRepository;
     private final TreasuryService treasuryService;
     private final com.application.e_wallet.audit.service.AuditService auditService;
+    private final com.application.e_wallet.notification.Notifier notifier;
 
     //=================== Agent creates the treasury request ==================//
     @Transactional
@@ -193,6 +194,13 @@ public class TreasuryRequestService {
         auditService.record(adminUserId, "TREASURY_REQUEST_APPROVE", "TREASURY_REQUEST", saved.getId(),
                 java.util.Map.of("status", "PENDING"), details("status", "APPROVED", "type", saved.getRequestType().name(), "amount", saved.getAmount().toPlainString(), "ref", saved.getRequestRef()),
                 null, null);
+        if (saved.getRequestType() == RequestType.TOPUP) {
+            BigDecimal floatBalance = walletRepository.findByUserIdAndWalletType(saved.getAgent().getUser().getId(), WalletType.AGENT_FLOAT)
+                    .map(WalletEntity::getBalance).orElse(BigDecimal.ZERO);
+            notifier.notify(com.application.e_wallet.notification.NotificationKey.A5, com.application.e_wallet.notification.NotificationRecipient.of(saved.getAgent().getUser()),
+                    java.util.Map.of("ref", saved.getRequestRef(), "amount", com.application.e_wallet.notification.NotificationFormat.tzs(saved.getAmount()),
+                            "float", com.application.e_wallet.notification.NotificationFormat.tzs(floatBalance)));
+        }
         return toResponse(saved);
     }
 
@@ -224,6 +232,10 @@ public class TreasuryRequestService {
         auditService.record(adminUserId, "TREASURY_REQUEST_REJECT", "TREASURY_REQUEST", rejected.getId(),
                 java.util.Map.of("status", "PENDING"), details("status", "REJECTED", "type", rejected.getRequestType().name(), "amount", rejected.getAmount().toPlainString(), "ref", rejected.getRequestRef()),
                 request.reason(), null);
+        if (rejected.getRequestType() == RequestType.TOPUP && rejected.getAgent() != null) {
+            notifier.notify(com.application.e_wallet.notification.NotificationKey.A6, com.application.e_wallet.notification.NotificationRecipient.of(rejected.getAgent().getUser()),
+                    java.util.Map.of("ref", rejected.getRequestRef(), "reason", rejected.getDecisionNote()));
+        }
         return toResponse(rejected);
     }
 
@@ -275,7 +287,8 @@ public class TreasuryRequestService {
                 treasuryRequest.getCreatedAt(),
                 treasuryRequest.getExternalReference(),
                 requestedBy != null ? requestedBy.getId() : null,
-                requestedBy != null ? decidedByName(requestedBy) : null
+                requestedBy != null ? decidedByName(requestedBy) : null,
+                treasuryRequest.getSlipFileKey() != null
         );
     }
 

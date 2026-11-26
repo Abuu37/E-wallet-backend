@@ -73,6 +73,13 @@ public class TreasuryRequestEntity {
     @Column(name = "external_reference", length = 100)
     private String externalReference;
 
+    /** The photo of the deposit slip, kept on disk under this random name. Only float requests (Path B) have one. */
+    @Column(name = "slip_file_key", length = 200)
+    private String slipFileKey;
+
+    @Column(name = "slip_content_type", length = 60)
+    private String slipContentType;
+
     @Column(name = "decided_at")
     private OffsetDateTime decidedAt;
 
