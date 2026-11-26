@@ -23,8 +23,8 @@ public class BeneficiaryController {
     /** People this customer has sent money to, most recent first. */
     @GetMapping
     @PreAuthorize("hasAuthority('WALLET_TO_WALLET_TRANSFER')")
-    public ResponseEntity<List<BeneficiaryItem>> recent(Authentication authentication) {
+    public ResponseEntity<com.application.e_wallet.common.dto.ApiResponse<List<BeneficiaryItem>>> recent(Authentication authentication) {
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
-        return ResponseEntity.ok(beneficiaryService.recent(principal.userId()));
+        return ResponseEntity.ok(com.application.e_wallet.common.dto.ApiResponse.<List<BeneficiaryItem>>builder().timestamp(java.time.Instant.now()).status(200).message("Recent recipients.").data(beneficiaryService.recent(principal.userId())).build());
     }
 }

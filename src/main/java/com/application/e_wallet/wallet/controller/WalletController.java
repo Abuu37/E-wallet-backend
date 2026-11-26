@@ -32,10 +32,10 @@ public class WalletController {
     /** Rate-limited per person so the lookup cannot be used to list who is on WalletPesa. */
     @GetMapping("/lookup")
     @PreAuthorize("hasAuthority('WALLET_TO_WALLET_TRANSFER')")
-    public ResponseEntity<com.application.e_wallet.wallet.dto.LookupResponse> lookup(@org.springframework.web.bind.annotation.RequestParam String phone, Authentication authentication) {
+    public ResponseEntity<com.application.e_wallet.common.dto.ApiResponse<com.application.e_wallet.wallet.dto.LookupResponse>> lookup(@org.springframework.web.bind.annotation.RequestParam String phone, Authentication authentication) {
         com.application.e_wallet.security.jwt.AuthenticatedUser principal = (com.application.e_wallet.security.jwt.AuthenticatedUser) authentication.getPrincipal();
         rateLimitingService.enforceLookup(principal.userId());
-        return ResponseEntity.ok(lookupService.lookup(phone));
+        return ResponseEntity.ok(com.application.e_wallet.common.dto.ApiResponse.<com.application.e_wallet.wallet.dto.LookupResponse>builder().timestamp(java.time.Instant.now()).status(200).message("Lookup done.").data(lookupService.lookup(phone)).build());
     }
 
     @GetMapping("/me")

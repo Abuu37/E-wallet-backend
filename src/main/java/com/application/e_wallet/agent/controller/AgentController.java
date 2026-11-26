@@ -63,10 +63,10 @@ public class AgentController {
     /** Active agents a customer can withdraw from. Open to any signed-in person. */
     @GetMapping("/nearby")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<java.util.List<com.application.e_wallet.agent.dto.NearbyAgentResponse>> nearby(
+    public ResponseEntity<com.application.e_wallet.common.dto.ApiResponse<java.util.List<com.application.e_wallet.agent.dto.NearbyAgentResponse>>> nearby(
             @RequestParam(required = false, defaultValue = "") String region,
             @RequestParam(required = false, defaultValue = "") String q) {
-        return ResponseEntity.ok(agentService.nearby(region, q));
+        return ResponseEntity.ok(com.application.e_wallet.common.dto.ApiResponse.<java.util.List<com.application.e_wallet.agent.dto.NearbyAgentResponse>>builder().timestamp(java.time.Instant.now()).status(200).message("Agents found.").data(agentService.nearby(region, q)).build());
     }
 
     @GetMapping("/profile")

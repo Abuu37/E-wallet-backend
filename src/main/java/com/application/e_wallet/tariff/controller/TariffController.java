@@ -24,10 +24,10 @@ public class TariffController {
     /** Any signed-in person: the confirm screens show the fee before the PIN is typed. */
     @GetMapping("/quote")
     @PreAuthorize("isAuthenticated()")
-    public org.springframework.http.ResponseEntity<com.application.e_wallet.tariff.dto.QuoteResponse> quote(
+    public org.springframework.http.ResponseEntity<com.application.e_wallet.common.dto.ApiResponse<com.application.e_wallet.tariff.dto.QuoteResponse>> quote(
             @org.springframework.web.bind.annotation.RequestParam String type,
             @org.springframework.web.bind.annotation.RequestParam java.math.BigDecimal amount) {
-        return org.springframework.http.ResponseEntity.ok(tariffService.quote(type, amount));
+        return org.springframework.http.ResponseEntity.ok(com.application.e_wallet.common.dto.ApiResponse.<com.application.e_wallet.tariff.dto.QuoteResponse>builder().timestamp(java.time.Instant.now()).status(200).message("Quote ready.").data(tariffService.quote(type, amount)).build());
     }
 
     @GetMapping
