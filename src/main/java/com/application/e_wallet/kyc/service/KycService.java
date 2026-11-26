@@ -101,8 +101,15 @@ public class KycService {
                 tier.getPerPayment(), tier.getDaily(), tier.getMaxBalance(),
                 toLimits(limits.getBasic()), toLimits(limits.getVerified()),
                 true,
-                walletRepository.findByUserIdAndWalletType(customer.getUser().getId(), com.application.e_wallet.wallet.entity.WalletType.CUSTOMER_MAIN)
-                        .map(w -> limitService.usedToday(w.getId())).orElse(java.math.BigDecimal.ZERO));
+                usedToday(customer));
+    }
+
+    private java.math.BigDecimal usedToday(CustomerEntity customer) {
+        if (customer.getUser() == null) {
+            return java.math.BigDecimal.ZERO;
+        }
+        return walletRepository.findByUserIdAndWalletType(customer.getUser().getId(), com.application.e_wallet.wallet.entity.WalletType.CUSTOMER_MAIN)
+                .map(w -> limitService.usedToday(w.getId())).orElse(java.math.BigDecimal.ZERO);
     }
 
     private static KycStatusResponse.Limits toLimits(KycLimitsProperties.Tier tier) {
