@@ -214,6 +214,18 @@ public class GlobalExceptionHandler {
                 .body(clientError(HttpStatus.BAD_REQUEST, "The " + exception.getHeaderName() + " header is required.", request));
     }
 
+    // A form field or file that was left out of an upload, or an upload that is too big, is the caller's mistake too.
+    @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException.class)
+    public ResponseEntity<ErrorResponse> handleMissingPart(org.springframework.web.multipart.support.MissingServletRequestPartException exception, HttpServletRequest request) {
+        String message = "slip".equals(exception.getRequestPartName()) ? "Attach a photo of the deposit slip." : "The " + exception.getRequestPartName() + " part is required.";
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(clientError(HttpStatus.BAD_REQUEST, message, request));
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadTooLarge(org.springframework.web.multipart.MaxUploadSizeExceededException exception, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(clientError(HttpStatus.CONTENT_TOO_LARGE, "The file is too large. The most is 5 MB.", request));
+    }
+
     // A wrong method, content type or path is the caller's mistake: answer with the right 4xx and no stack trace.
     @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ErrorResponse> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
