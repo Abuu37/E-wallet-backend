@@ -182,6 +182,17 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
                               @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
 
     /** A customer's or agent's own transactions, with the filters of the Transactions screen. Empty strings mean "no filter". */
+    /** Completed money received by a wallet through one transaction type in a window, e.g. float topped up by bank today. */
+    @Query("""
+            SELECT COALESCE(SUM(t.amount), 0) FROM TransactionEntity t
+            WHERE t.receiverWallet.id = :walletId
+              AND t.status = 'COMPLETED'
+              AND t.transactionType = :type
+              AND t.createdAt >= :start AND t.createdAt < :end
+            """)
+    BigDecimal sumReceivedByTypeBetween(@Param("walletId") UUID walletId, @Param("type") String type,
+                                        @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
+
     @Query(value = """
             SELECT t FROM TransactionEntity t
               JOIN FETCH t.senderWallet sw JOIN FETCH sw.user

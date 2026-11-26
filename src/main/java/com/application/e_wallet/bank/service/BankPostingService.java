@@ -131,17 +131,21 @@ public class BankPostingService {
     private void reverseWithdrawal(TransactionEntity transaction, LinkedBankEntity bank) {
         UUID customerWalletId = transaction.getSenderWallet().getId();
         UUID escrowId = transaction.getReceiverWallet().getId();
-        UUID revenueId = wallets.findByWalletType(WalletType.REVENUE).orElseThrow().getId();
+        BigDecimal fee = transaction.getFee();
+        UUID revenueId = fee.signum() > 0 ? wallets.findByWalletType(WalletType.REVENUE).orElseThrow().getId() : null;
+        List<UUID> ids = new ArrayList<>(List.of(customerWalletId, escrowId));
+        if (revenueId != null) {
+            ids.add(revenueId);
+        }
         Map<UUID, WalletEntity> locked = new HashMap<>();
-        for (WalletEntity w : wallets.lockAllOrdered(List.of(customerWalletId, escrowId, revenueId))) {
+        for (WalletEntity w : wallets.lockAllOrdered(ids)) {
             locked.put(w.getId(), w);
         }
         WalletEntity customer = locked.get(customerWalletId);
         WalletEntity escrow = locked.get(escrowId);
-        WalletEntity revenue = locked.get(revenueId);
+        WalletEntity revenue = revenueId == null ? null : locked.get(revenueId);
 
         BigDecimal amount = transaction.getAmount();
-        BigDecimal fee = transaction.getFee();
         customer.setBalance(customer.getBalance().add(amount).add(fee));
         escrow.setBalance(escrow.getBalance().add(amount));
         List<JournalLineRequest> lines = new ArrayList<>();
@@ -155,18 +159,23 @@ public class BankPostingService {
                 customer.getUser(), lines);
         wallets.save(customer);
         wallets.save(escrow);
-        wallets.save(revenue);
+        if (revenue != null) {
+            wallets.save(revenue);
+        }
 
         transaction.setStatus(TransactionStatus.FAILED.name());
         transactions.save(transaction);
 
-        notifier.notify(NotificationKey.C7, NotificationRecipient.of(customer.getUser()), Map.of(
+        boolean isCustomer = customer.getWalletType() == WalletType.CUSTOMER_MAIN;
+        notifier.notify(isCustomer ? NotificationKey.C7 : NotificationKey.A10, NotificationRecipient.of(customer.getUser()), Map.of(
                 "amount", tzs(amount), "bank", bank.getInstitutionName() == null ? "your bank" : bank.getInstitutionName(),
                 "mask", bank.getAccountMask() == null ? "" : bank.getAccountMask(), "ref", transaction.getReferenceNo()));
     }
 
     private static boolean isWithdrawal(TransactionEntity transaction) {
-        return TransactionType.BANK_WITHDRAWAL.name().equals(transaction.getTransactionType());
+        String type = transaction.getTransactionType();
+        return TransactionType.BANK_WITHDRAWAL.name().equals(type) || TransactionType.FLOAT_BANK_WITHDRAWAL.name().equals(type)
+                || TransactionType.COMMISSION_BANK_WITHDRAWAL.name().equals(type);
     }
 
     // The proxy, so @Transactional applies when this class calls itself from another thread.

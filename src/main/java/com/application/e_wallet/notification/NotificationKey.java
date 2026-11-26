@@ -7,7 +7,7 @@ public enum NotificationKey {
     // customer money
     C1, C2, C3, C4, C5, C6, C7,
     // agent money
-    A1, A2, A3, A4, A5, A6, A7, A8, A9,
+    A1, A2, A3, A4, A5, A6, A7, A8, A9, A10,
     // staff
     T1, T2
 }

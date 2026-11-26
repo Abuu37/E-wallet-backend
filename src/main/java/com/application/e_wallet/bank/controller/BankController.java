@@ -36,7 +36,7 @@ public class BankController {
     private final RateLimitingService rateLimitingService;
 
     @PostMapping("/link-token")
-    @PreAuthorize("hasAuthority('CUSTOMER_UPDATE')")
+    @PreAuthorize("hasAnyAuthority('CUSTOMER_UPDATE', 'AGENT_BANK')")
     public ResponseEntity<ApiResponse<BankLinkTokenResponse>> linkToken(Authentication authentication) {
         UUID userId = userId(authentication);
         rateLimitingService.enforceLookup(userId);
@@ -44,7 +44,7 @@ public class BankController {
     }
 
     @PostMapping("/exchange")
-    @PreAuthorize("hasAuthority('CUSTOMER_UPDATE')")
+    @PreAuthorize("hasAnyAuthority('CUSTOMER_UPDATE', 'AGENT_BANK')")
     public ResponseEntity<ApiResponse<LinkedBankResponse>> exchange(@Valid @RequestBody BankExchangeRequest request, Authentication authentication) {
         UUID userId = userId(authentication);
         rateLimitingService.enforceLookup(userId);
@@ -52,13 +52,13 @@ public class BankController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('CUSTOMER_VIEW')")
+    @PreAuthorize("hasAnyAuthority('CUSTOMER_VIEW', 'AGENT_BANK')")
     public ResponseEntity<ApiResponse<List<LinkedBankResponse>>> list(Authentication authentication) {
         return ok("Linked banks retrieved", bankLinks.list(userId(authentication)));
     }
 
     @GetMapping("/{id}/balance")
-    @PreAuthorize("hasAuthority('CUSTOMER_VIEW')")
+    @PreAuthorize("hasAnyAuthority('CUSTOMER_VIEW', 'AGENT_BANK')")
     public ResponseEntity<ApiResponse<BankBalanceResponse>> balance(@PathVariable UUID id, Authentication authentication) {
         UUID userId = userId(authentication);
         rateLimitingService.enforceLookup(userId);
@@ -66,7 +66,7 @@ public class BankController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('CUSTOMER_UPDATE')")
+    @PreAuthorize("hasAnyAuthority('CUSTOMER_UPDATE', 'AGENT_BANK')")
     public ResponseEntity<ApiResponse<Void>> unlink(@PathVariable UUID id, Authentication authentication) {
         bankLinks.unlink(userId(authentication), id);
         return ok("Bank removed", null);

@@ -35,6 +35,7 @@ public final class NotificationTemplates {
         TEXT.put(NotificationKey.A6, "Float request {ref} was not approved: {reason}. Call 0800 000 000.");
         TEXT.put(NotificationKey.A7, "TZS {amount} sent from float to {bank} ••{mask}. Ref {ref}. Float {float}.");
         TEXT.put(NotificationKey.A8, "Commission TZS {amount} sent to {bank} ••{mask}. Ref {ref}.");
+        TEXT.put(NotificationKey.A10, "Your transfer to {bank} ••{mask} failed. TZS {amount} is back in your wallet. Ref {ref}.");
         TEXT.put(NotificationKey.A9, "Your float is TZS {float}. Top up to keep serving customers.");
 
         TEXT.put(NotificationKey.T1, TEXT.get(NotificationKey.S5));

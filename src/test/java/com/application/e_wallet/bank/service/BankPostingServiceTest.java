@@ -157,4 +157,26 @@ class BankPostingServiceTest {
         service.attempt(credit.getId());
         verify(plaid, never()).postSandboxLine(any(), any(), any());
     }
+
+    @Test
+    void aFailedAgentFloatPayoutIsRefundedWithNoFeeAndTheAgentIsTold() {
+        WalletEntity agentFloat = WalletEntity.builder().id(UUID.randomUUID()).user(user).walletType(WalletType.AGENT_FLOAT).balance(new BigDecimal("200000.00")).currency("TZS").status(WalletStatus.ACTIVE).build();
+        TransactionEntity payout = TransactionEntity.builder().id(UUID.randomUUID()).referenceNo("FBW-1").senderWallet(agentFloat).receiverWallet(escrow)
+                .amount(new BigDecimal("100000")).fee(BigDecimal.ZERO).transactionType("FLOAT_BANK_WITHDRAWAL").status("PENDING").build();
+        BankPostingEntity posting = BankPostingEntity.builder().id(UUID.randomUUID()).transactionId(payout.getId()).linkedBankId(bank.getId()).direction("CREDIT")
+                .usdAmount(new BigDecimal("38.47")).attempts(BankPostingService.MAX_WITHDRAWAL_ATTEMPTS - 1).build();
+        when(transactions.findById(payout.getId())).thenReturn(Optional.of(payout));
+        when(postings.lockById(posting.getId())).thenReturn(Optional.of(posting));
+        when(wallets.lockAllOrdered(anyCollection())).thenReturn(List.of(agentFloat, escrow));
+        doThrow(new ProviderUnavailableException("down")).when(plaid).postSandboxLine(any(), any(), any());
+
+        service.attempt(posting.getId());
+
+        assertThat(payout.getStatus()).isEqualTo("FAILED");
+        assertThat(agentFloat.getBalance()).isEqualByComparingTo("300000.00");
+        assertThat(escrow.getBalance()).isEqualByComparingTo("550000.00");
+        assertThat(revenue.getBalance()).isEqualByComparingTo("1000.00");
+        verify(notifier).notify(eq(NotificationKey.A10), any(), any());
+        verify(wallets, never()).findByWalletType(WalletType.REVENUE);
+    }
 }
