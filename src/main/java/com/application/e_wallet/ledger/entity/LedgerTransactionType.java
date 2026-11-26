@@ -9,5 +9,8 @@ public enum LedgerTransactionType {
     CASH_IN,
     CASH_OUT,
     TRANSFER,
-    COMMISSION_SETTLE
+    COMMISSION_SETTLE,
+    BANK_TOPUP,
+    BANK_WITHDRAW,
+    BANK_WITHDRAW_REVERSAL
 }

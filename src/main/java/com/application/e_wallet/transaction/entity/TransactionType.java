@@ -5,5 +5,7 @@ public enum TransactionType {
     CASH_OUT,
     TRANSFER,
     SERVICE_FEE,
-    SERVICE_COMMISSION
+    SERVICE_COMMISSION,
+    BANK_TOPUP,
+    BANK_WITHDRAWAL
 }

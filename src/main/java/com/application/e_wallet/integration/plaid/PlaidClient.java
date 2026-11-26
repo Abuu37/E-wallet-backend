@@ -40,11 +40,18 @@ public class PlaidClient {
                 .build();
     }
 
+    private static final String KYC_UNAVAILABLE = "Identity verification is not available right now. Please try again.";
+
     public JsonNode post(String path, Map<String, Object> body) {
+        return post(path, body, KYC_UNAVAILABLE);
+    }
+
+    /** Same call, with the message a person sees when Plaid cannot answer. */
+    public JsonNode post(String path, Map<String, Object> body, String unavailableMessage) {
         if (properties.getClientId() == null || properties.getClientId().isBlank()
                 || properties.getSecret() == null || properties.getSecret().isBlank()) {
             log.error("Plaid is not configured: PLAID_CLIENT_ID / PLAID_SECRET are missing");
-            throw new ProviderUnavailableException("Identity verification is not available right now.");
+            throw new ProviderUnavailableException(unavailableMessage);
         }
         Map<String, Object> payload = new LinkedHashMap<>(body);
         payload.put("client_id", properties.getClientId());
@@ -61,10 +68,10 @@ public class PlaidClient {
             JsonNode error = parseQuietly(e.getResponseBodyAsString());
             log.warn("Plaid {} failed: status={} error_code={} request_id={}", path, e.getStatusCode().value(),
                     text(error, "error_code"), text(error, "request_id"));
-            throw new ProviderUnavailableException("Identity verification is not available right now. Please try again.");
+            throw new ProviderUnavailableException(unavailableMessage);
         } catch (RestClientException e) {
             log.warn("Plaid {} unreachable: {}", path, e.getClass().getSimpleName());
-            throw new ProviderUnavailableException("Identity verification is not available right now. Please try again.");
+            throw new ProviderUnavailableException(unavailableMessage);
         }
     }
 

@@ -63,6 +63,14 @@ public class TransactionEntity {
     @Column(name = "external_reference", length = 100)
     private String externalReference;
 
+    /** The linked bank a bank top-up or bank withdrawal used. */
+    @Column(name = "linked_bank_id")
+    private UUID linkedBankId;
+
+    /** Who the other side is when it is not a wallet, e.g. "First Platypus Bank ••0000". */
+    @Column(name = "counterparty_label", length = 150)
+    private String counterpartyLabel;
+
     @PrePersist
     protected void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();
