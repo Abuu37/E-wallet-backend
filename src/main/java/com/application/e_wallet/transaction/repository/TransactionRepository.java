@@ -217,4 +217,50 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
     Page<TransactionEntity> findMine(@Param("walletIds") java.util.Collection<UUID> walletIds, @Param("type") String type,
                                      @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end,
                                      @Param("q") String q, Pageable pageable);
+
+    /** What an agent conducted: transactions where their float wallet is a party, of the given types, in a window, searchable. */
+    @Query(value = """
+            SELECT t FROM TransactionEntity t
+              JOIN FETCH t.senderWallet sw JOIN FETCH t.receiverWallet rw
+            WHERE (sw.id = :floatId OR rw.id = :floatId)
+              AND t.transactionType IN :types
+              AND t.createdAt >= :start AND t.createdAt < :end
+              AND (:q = '' OR LOWER(t.referenceNo) LIKE CONCAT('%', :q, '%')
+                   OR LOWER(sw.accountName) LIKE CONCAT('%', :q, '%') OR LOWER(rw.accountName) LIKE CONCAT('%', :q, '%')
+                   OR sw.accountNumber LIKE CONCAT('%', :q, '%') OR rw.accountNumber LIKE CONCAT('%', :q, '%'))
+            ORDER BY t.createdAt DESC
+            """,
+            countQuery = """
+            SELECT COUNT(t) FROM TransactionEntity t
+            WHERE (t.senderWallet.id = :floatId OR t.receiverWallet.id = :floatId)
+              AND t.transactionType IN :types
+              AND t.createdAt >= :start AND t.createdAt < :end
+              AND (:q = '' OR LOWER(t.referenceNo) LIKE CONCAT('%', :q, '%')
+                   OR LOWER(t.senderWallet.accountName) LIKE CONCAT('%', :q, '%') OR LOWER(t.receiverWallet.accountName) LIKE CONCAT('%', :q, '%')
+                   OR t.senderWallet.accountNumber LIKE CONCAT('%', :q, '%') OR t.receiverWallet.accountNumber LIKE CONCAT('%', :q, '%'))
+            """)
+    Page<TransactionEntity> findAgentActivity(@Param("floatId") UUID floatId, @Param("types") java.util.Collection<String> types,
+                                              @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end,
+                                              @Param("q") String q, Pageable pageable);
+
+    /** The same window without paging, for the 7-day chart and today's numbers. */
+    @Query("""
+            SELECT t FROM TransactionEntity t
+              JOIN FETCH t.senderWallet sw JOIN FETCH t.receiverWallet rw
+            WHERE (sw.id = :floatId OR rw.id = :floatId)
+              AND t.transactionType IN :types
+              AND t.createdAt >= :start AND t.createdAt < :end
+            ORDER BY t.createdAt DESC
+            """)
+    List<TransactionEntity> findAgentActivityBetween(@Param("floatId") UUID floatId, @Param("types") java.util.Collection<String> types,
+                                                     @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
+
+    /** Withdrawals paid at this agent's till since a moment ago, newest first. */
+    @Query("""
+            SELECT t FROM TransactionEntity t
+              JOIN FETCH t.senderWallet sw JOIN FETCH t.receiverWallet rw
+            WHERE rw.id = :floatId AND t.transactionType = 'CASH_OUT' AND t.createdAt >= :since
+            ORDER BY t.createdAt DESC
+            """)
+    List<TransactionEntity> findLiveWithdrawals(@Param("floatId") UUID floatId, @Param("since") OffsetDateTime since, Pageable pageable);
 }
