@@ -27,6 +27,10 @@ public class TransactionEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    /** The code a customer shows the agent after withdrawing. Only set for withdrawals at an agent. */
+    @Column(name = "match_code", length = 8)
+    private String matchCode;
+
     @Column(name = "reference_no", nullable = false, unique = true, length = 60)
     private String referenceNo;
 

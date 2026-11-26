@@ -22,6 +22,21 @@ public interface AgentRepository extends JpaRepository<AgentEntity, UUID> {
 
     Optional<AgentEntity> findByUserId(UUID userId);
 
+    Optional<AgentEntity> findByTillNumber(String tillNumber);
+
+    /** Active agents for "Find an agent". Empty strings mean "no filter". */
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT a FROM AgentEntity a JOIN FETCH a.region r JOIN FETCH a.district d
+            WHERE a.agentStatus = com.application.e_wallet.agent.entity.AgentStatus.ACTIVE
+              AND (:regionId = '' OR r.externalId = :regionId)
+              AND (:q = '' OR LOWER(a.businessName) LIKE CONCAT('%', :q, '%')
+                   OR a.tillNumber LIKE CONCAT('%', :q, '%')
+                   OR LOWER(d.name) LIKE CONCAT('%', :q, '%'))
+            ORDER BY a.businessName
+            """)
+    List<AgentEntity> findNearby(@org.springframework.data.repository.query.Param("regionId") String regionId,
+                                 @org.springframework.data.repository.query.Param("q") String q);
+
     long countByAgentStatus(AgentStatus agentStatus);
 
     Page<AgentEntity> findByAgentStatus(AgentStatus agentStatus, Pageable pageable);

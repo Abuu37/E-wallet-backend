@@ -27,6 +27,25 @@ public class TariffService {
                 ));
     }
 
+    private static final java.util.Set<String> QUOTABLE = java.util.Set.of("TRANSFER", "CASH_OUT", "BANK_WITHDRAWAL");
+
+    /** The fee and total for an action the customer is about to confirm. */
+    @Transactional(readOnly = true)
+    public com.application.e_wallet.tariff.dto.QuoteResponse quote(String type, BigDecimal amount) {
+        String normalized = type == null ? "" : type.trim().toUpperCase();
+        if (!QUOTABLE.contains(normalized)) {
+            throw new BadRequestException("Unknown type. Use one of " + QUOTABLE.stream().sorted().toList());
+        }
+        if (amount == null || amount.signum() <= 0) {
+            throw new BadRequestException("Amount must be greater than zero");
+        }
+        if (amount.stripTrailingZeros().scale() > 2) {
+            throw new BadRequestException("Amount must have at most 2 decimal places");
+        }
+        BigDecimal fee = findApplicableTariff(normalized, amount).getFee();
+        return new com.application.e_wallet.tariff.dto.QuoteResponse(normalized, amount, fee, amount.add(fee));
+    }
+
     /** Every band (live and inactive), grouped by transaction type and ordered by amount range. */
     @Transactional(readOnly = true)
     public List<TariffBandItem> listBands() {

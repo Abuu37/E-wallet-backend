@@ -52,6 +52,7 @@ class TreasuryServiceTest {
     @Mock private TreasuryRequestRepository treasuryRequestRepository;
     @Mock private TransactionJournalRepository transactionJournalRepository;
     @Mock private LedgerService ledgerService;
+    @Mock private com.application.e_wallet.transaction.service.CommissionService commissionService;
     @InjectMocks private TreasuryService treasuryService;
 
     private UUID adminUserId;
@@ -226,6 +227,13 @@ class TreasuryServiceTest {
                 && lines.stream().anyMatch(l -> l.walletId().equals(revenueWallet.getId()) && l.entryType() == EntryType.DEBIT)
                 && lines.stream().anyMatch(l -> l.walletId().equals(commissionWallet.getId()) && l.entryType() == EntryType.CREDIT)
         ));
+    }
+
+    @Test
+    void aRefillPaysOwedCommissionStraightAfterwards() {
+        treasuryService.fundCommission(new BigDecimal("150.00"), "month start", adminUserId);
+
+        verify(commissionService).settleOwed(admin);
     }
 
     @Test

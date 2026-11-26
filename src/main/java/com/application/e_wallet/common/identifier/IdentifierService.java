@@ -27,6 +27,10 @@ public class IdentifierService {
         return "ST-" + String.format("%04d", next("staff_no_seq"));
     }
 
+    public String nextTillNumber() {
+        return String.valueOf(next("till_no_seq"));
+    }
+
     private long next(String sequence) {
         Long value = jdbcTemplate.queryForObject("SELECT nextval('" + sequence + "')", Long.class);
         if (value == null) {

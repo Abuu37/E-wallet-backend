@@ -53,6 +53,29 @@ public class RateLimitingService {
         }
     }
 
+    private final Cache<String, Bucket> perUserCache = Caffeine.newBuilder()
+            .expireAfterAccess(1, TimeUnit.HOURS)
+            .build();
+
+    /** Phone lookups: 30 a minute per signed-in person. */
+    public void enforceLookup(java.util.UUID userId) {
+        consume("lookup:" + userId, 30);
+    }
+
+    /** Money requests: 10 a minute per signed-in person, which also slows anyone guessing a PIN. */
+    public void enforceMoney(java.util.UUID userId) {
+        consume("money:" + userId, 10);
+    }
+
+    private void consume(String key, int perMinute) {
+        ConsumptionProbe probe = perUserCache.get(key, k -> Bucket.builder()
+                .addLimit(Bandwidth.classic(perMinute, Refill.intervally(perMinute, Duration.ofMinutes(1))))
+                .build()).tryConsumeAndReturnRemaining(1);
+        if (!probe.isConsumed()) {
+            throw tooMany(probe);
+        }
+    }
+
     public boolean tryConsumeIp(String ip) {
         return ipCache.get(ip, key -> createNewIpBucket()).tryConsume(1);
     }

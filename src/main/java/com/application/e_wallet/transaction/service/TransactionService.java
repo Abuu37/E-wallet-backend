@@ -16,8 +16,6 @@ import com.application.e_wallet.tariff.entity.TariffEntity;
 import com.application.e_wallet.tariff.service.TariffService;
 import com.application.e_wallet.transaction.dto.CashInRequest;
 import com.application.e_wallet.transaction.dto.CashInResponse;
-import com.application.e_wallet.transaction.dto.CashOutRequest;
-import com.application.e_wallet.transaction.dto.CashOutResponse;
 import com.application.e_wallet.transaction.dto.TransactionDetailResponse;
 import com.application.e_wallet.transaction.dto.TransactionListItem;
 import com.application.e_wallet.transaction.dto.TransactionListResponse;
@@ -36,6 +34,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.application.e_wallet.notification.NotificationFormat;
+import com.application.e_wallet.notification.NotificationKey;
+import com.application.e_wallet.notification.NotificationRecipient;
+import com.application.e_wallet.transaction.dto.MyTransactionItem;
+import com.application.e_wallet.transaction.dto.MyTransactionList;
+import java.util.ArrayList;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -57,38 +61,35 @@ public class TransactionService {
     private final LedgerService ledgerService;
     private final PhoneNumberNormalizer phoneNumberNormalizer;
     private final PasswordEncoder pinEncoder;
+    private final com.application.e_wallet.limits.LimitService limitService;
+    private final CommissionService commissionService;
+    private final com.application.e_wallet.notification.Notifier notifier;
 
-    //=================== AGENT CASH-IN: CUSTOMER GIVE CASH TO AGENT FOR THE WALLET ADDITION ==============
+    //=================== AGENT CASH-IN: CUSTOMER GIVES CASH TO AGENT FOR THE WALLET ADDITION ==============
     @Transactional
     public CashInResponse cashIn(CashInRequest request, UUID userId) {
 
         AgentEntity agent = agentRepository.findByUserId(userId)
                 .orElseThrow(() -> new BadRequestException("Agent account not found"));
-
         if (agent.getAgentStatus() != AgentStatus.ACTIVE) {
             throw new BadRequestException("Agent is not active");
         }
-
         UserEntity agentUser = agent.getUser();
 
         WalletEntity agentFloatWallet = walletRepository.findByUserIdAndWalletTypeForUpdate(agentUser.getId(), WalletType.AGENT_FLOAT)
                 .orElseThrow(() -> new BadRequestException("Agent float wallet not found"));
-
         if (!agentFloatWallet.getAccountNumber().equals(request.agentAccountNumber())) {
             throw new BadRequestException("Agent account number does not match the authenticated agent");
         }
-
         if (agentFloatWallet.getStatus() != WalletStatus.ACTIVE) {
             throw new BadRequestException("Agent float wallet is not active");
         }
-
         if (!pinEncoder.matches(request.agentPin(), agentUser.getPinHash())) {
             throw new BadRequestException("Invalid agent PIN");
         }
 
         WalletEntity customerWallet = walletRepository.findByAccountNumberForUpdate(request.accountNumber())
                 .orElseThrow(() -> new BadRequestException("Customer account not found"));
-
         if (customerWallet.getWalletType() != WalletType.CUSTOMER_MAIN) {
             throw new BadRequestException("Account number does not belong to a customer wallet");
         }
@@ -96,18 +97,17 @@ public class TransactionService {
         UserEntity customerUser = customerWallet.getUser();
         CustomerEntity customer = customerRepository.findByUserId(customerUser.getId())
                 .orElseThrow(() -> new BadRequestException("Customer not found"));
-
         if (customer.getStatus() != CustomerStatus.ACTIVE) {
             throw new BadRequestException("Customer account is not active");
         }
 
+        // The account number and the phone must belong to the same person.
         String normalizedPhone = phoneNumberNormalizer.normalize(request.phone());
         if (!customer.getPhoneNumber().equals(normalizedPhone)) {
             throw new BadRequestException("Phone number does not match the account holder");
         }
 
         BigDecimal amount = request.amount();
-
         TariffEntity tariff = tariffService.findApplicableTariff(TransactionType.CASH_IN.name(), amount);
         BigDecimal fee = tariff.getFee();
         BigDecimal commission = tariff.getAgentCommission();
@@ -120,26 +120,28 @@ public class TransactionService {
         if (customerWallet.getStatus() != WalletStatus.ACTIVE) {
             throw new BadRequestException("Customer wallet is not active");
         }
-
         if (agentFloatWallet.getBalance().compareTo(amount) < 0) {
             throw new BadRequestException("Insufficient agent float balance");
         }
-        if (commissionPoolWallet.getBalance().compareTo(commission) < 0) {
-            throw new BadRequestException("Insufficient commission pool balance");
-        }
+        limitService.checkReceive(customerWallet.getBalance(), customer.getKycStatus(), amount);
+
+        // An empty commission pool never blocks the cash-in: the commission is owed and paid after the next refill.
+        boolean commissionPaidNow = commissionService.poolCanPay(commissionPoolWallet, commission);
 
         agentFloatWallet.setBalance(agentFloatWallet.getBalance().subtract(amount));
         customerWallet.setBalance(customerWallet.getBalance().add(amount));
-        commissionPoolWallet.setBalance(commissionPoolWallet.getBalance().subtract(commission));
-        agentCommissionWallet.setBalance(agentCommissionWallet.getBalance().add(commission));
 
+        List<JournalLineRequest> lines = new ArrayList<>();
+        lines.add(new JournalLineRequest(agentFloatWallet.getId(), EntryType.DEBIT, amount));
+        lines.add(new JournalLineRequest(customerWallet.getId(), EntryType.CREDIT, amount));
+        if (commissionPaidNow && commission.signum() > 0) {
+            commissionPoolWallet.setBalance(commissionPoolWallet.getBalance().subtract(commission));
+            agentCommissionWallet.setBalance(agentCommissionWallet.getBalance().add(commission));
+            lines.add(new JournalLineRequest(commissionPoolWallet.getId(), EntryType.DEBIT, commission));
+            lines.add(new JournalLineRequest(agentCommissionWallet.getId(), EntryType.CREDIT, commission));
+        }
         ledgerService.postJournal(LedgerTransactionType.CASH_IN,
-                "Agent cash-in for " + customer.getPhoneNumber(), agentUser, List.of(
-                        new JournalLineRequest(agentFloatWallet.getId(), EntryType.DEBIT, amount),
-                        new JournalLineRequest(customerWallet.getId(), EntryType.CREDIT, amount),
-                        new JournalLineRequest(commissionPoolWallet.getId(), EntryType.DEBIT, commission),
-                        new JournalLineRequest(agentCommissionWallet.getId(), EntryType.CREDIT, commission)
-                ));
+                "Agent cash-in for " + customer.getPhoneNumber(), agentUser, lines);
 
         walletRepository.save(agentFloatWallet);
         walletRepository.save(customerWallet);
@@ -148,7 +150,7 @@ public class TransactionService {
 
         String referenceNo = generateReferenceNo();
 
-        TransactionEntity transaction = TransactionEntity.builder()
+        TransactionEntity transaction = transactionRepository.save(TransactionEntity.builder()
                 .referenceNo(referenceNo)
                 .senderWallet(agentFloatWallet)
                 .receiverWallet(customerWallet)
@@ -157,9 +159,17 @@ public class TransactionService {
                 .commission(commission)
                 .transactionType(TransactionType.CASH_IN.name())
                 .status(TransactionStatus.COMPLETED.name())
-                .build();
+                .build());
+        if (!commissionPaidNow) {
+            commissionService.recordOwed(agent, transaction, commission);
+        }
 
-        transactionRepository.save(transaction);
+        notifier.notify(NotificationKey.C2, NotificationRecipient.of(customerUser), java.util.Map.of(
+                "amount", NotificationFormat.tzs(amount), "agent", agent.getBusinessName(), "agentId", agent.getAgentNumber(),
+                "ref", referenceNo, "balance", NotificationFormat.tzs(customerWallet.getBalance())));
+        notifier.notify(NotificationKey.A1, NotificationRecipient.of(agentUser), java.util.Map.of(
+                "amount", NotificationFormat.tzs(amount), "name", customer.getFirstName().trim() + " " + customer.getLastName().trim(),
+                "ref", referenceNo, "commission", NotificationFormat.tzs(commission), "float", NotificationFormat.tzs(agentFloatWallet.getBalance())));
 
         return new CashInResponse(
                 referenceNo,
@@ -174,131 +184,29 @@ public class TransactionService {
         );
     }
 
-    //=================== AGENT CASH-OUT: GIVES CASH CUSTOMER ==============
-    @Transactional
-    public CashOutResponse cashOut(CashOutRequest request, UUID userId) {
+    //=================== MY TRANSACTIONS: filter by type and date, search, page ==============
+    @Transactional(readOnly = true)
+    public MyTransactionList listMine(UUID callerUserId, String type, java.time.LocalDate from, java.time.LocalDate to, String q, Pageable pageable) {
+        List<UUID> ownWalletIds = resolveOwnWalletIds(callerUserId);
+        java.time.ZoneId zone = java.time.ZoneId.of("Africa/Dar_es_Salaam");
+        OffsetDateTime start = (from == null ? java.time.LocalDate.of(2000, 1, 1) : from).atStartOfDay(zone).toOffsetDateTime();
+        OffsetDateTime end = (to == null ? java.time.LocalDate.of(2100, 1, 1) : to.plusDays(1)).atStartOfDay(zone).toOffsetDateTime();
+        String search = q == null ? "" : q.trim().toLowerCase();
 
-        AgentEntity agent = agentRepository.findByUserId(userId)
-                .orElseThrow(() -> new BadRequestException("Agent account not found"));
+        Page<TransactionEntity> page = transactionRepository.findMine(ownWalletIds, type == null ? "" : type.trim().toUpperCase(),
+                start, end, search, pageable);
+        List<MyTransactionItem> items = page.getContent().stream().map(t -> toMyItem(t, ownWalletIds)).toList();
+        return new MyTransactionList(items, page.getNumber(), page.getSize(), page.getTotalElements());
+    }
 
-        if (agent.getAgentStatus() != AgentStatus.ACTIVE) {
-            throw new BadRequestException("Agent is not active");
-        }
-
-        UserEntity agentUser = agent.getUser();
-
-        WalletEntity agentFloatWallet = walletRepository.findByUserIdAndWalletTypeForUpdate(agentUser.getId(), WalletType.AGENT_FLOAT)
-                .orElseThrow(() -> new BadRequestException("Agent float wallet not found"));
-
-        if (!agentFloatWallet.getAccountNumber().equals(request.agentAccountNumber())) {
-            throw new BadRequestException("Agent account number does not match the authenticated agent");
-        }
-
-        if (agentFloatWallet.getStatus() != WalletStatus.ACTIVE) {
-            throw new BadRequestException("Agent float wallet is not active");
-        }
-
-        if (!pinEncoder.matches(request.agentPin(), agentUser.getPinHash())) {
-            throw new BadRequestException("Invalid agent PIN");
-        }
-
-        WalletEntity customerWallet = walletRepository.findByAccountNumberForUpdate(request.customerAccountNumber())
-                .orElseThrow(() -> new BadRequestException("Customer account not found"));
-
-        if (customerWallet.getWalletType() != WalletType.CUSTOMER_MAIN) {
-            throw new BadRequestException("Account number does not belong to a customer wallet");
-        }
-
-        UserEntity customerUser = customerWallet.getUser();
-        CustomerEntity customer = customerRepository.findByUserId(customerUser.getId())
-                .orElseThrow(() -> new BadRequestException("Customer not found"));
-
-        if (customer.getStatus() != CustomerStatus.ACTIVE) {
-            throw new BadRequestException("Customer account is not active");
-        }
-
-        //Here to ask
-        String normalizedPhone = phoneNumberNormalizer.normalize(request.phone());
-        if (!customer.getPhoneNumber().equals(normalizedPhone)) {
-            throw new BadRequestException("Phone number does not match the account holder");
-        }
-
-        if (customerWallet.getStatus() != WalletStatus.ACTIVE) {
-            throw new BadRequestException("Customer wallet is not active");
-        }
-
-        if (!pinEncoder.matches(request.customerPin(), customerUser.getPinHash())) {
-            throw new BadRequestException("Invalid customer PIN");
-        }
-
-        BigDecimal amount = request.amount();
-
-        TariffEntity tariff = tariffService.findApplicableTariff(TransactionType.CASH_OUT.name(), amount);
-        BigDecimal fee = tariff.getFee();
-        BigDecimal commission = tariff.getAgentCommission();
-        BigDecimal totalDebit = amount.add(fee);
-
-        WalletEntity commissionPoolWallet = walletRepository.findByWalletTypeForUpdate(WalletType.COMMISSION)
-                .orElseThrow(() -> new IllegalStateException("Commission wallet not initialized"));
-        WalletEntity agentCommissionWallet = walletRepository.findByUserIdAndWalletTypeForUpdate(agentUser.getId(), WalletType.AGENT_COMMISSION)
-                .orElseThrow(() -> new BadRequestException("Agent commission wallet not found"));
-        WalletEntity revenueWallet = walletRepository.findByWalletTypeForUpdate(WalletType.REVENUE)
-                .orElseThrow(() -> new IllegalStateException("Revenue wallet not initialized"));
-
-        if (customerWallet.getBalance().compareTo(totalDebit) < 0) {
-            throw new BadRequestException("Insufficient customer wallet balance");
-        }
-        if (commissionPoolWallet.getBalance().compareTo(commission) < 0) {
-            throw new BadRequestException("Insufficient commission pool balance");
-        }
-
-        customerWallet.setBalance(customerWallet.getBalance().subtract(totalDebit));
-        agentFloatWallet.setBalance(agentFloatWallet.getBalance().add(amount));
-        commissionPoolWallet.setBalance(commissionPoolWallet.getBalance().subtract(commission));
-        agentCommissionWallet.setBalance(agentCommissionWallet.getBalance().add(commission));
-        revenueWallet.setBalance(revenueWallet.getBalance().add(fee));
-
-        ledgerService.postJournal(LedgerTransactionType.CASH_OUT,
-                "Agent cash-out for " + customer.getPhoneNumber(), agentUser, List.of(
-                        new JournalLineRequest(customerWallet.getId(), EntryType.DEBIT, totalDebit),
-                        new JournalLineRequest(agentFloatWallet.getId(), EntryType.CREDIT, amount),
-                        new JournalLineRequest(commissionPoolWallet.getId(), EntryType.DEBIT, commission),
-                        new JournalLineRequest(agentCommissionWallet.getId(), EntryType.CREDIT, commission),
-                        new JournalLineRequest(revenueWallet.getId(), EntryType.CREDIT, fee)
-                ));
-
-        walletRepository.save(customerWallet);
-        walletRepository.save(agentFloatWallet);
-        walletRepository.save(commissionPoolWallet);
-        walletRepository.save(agentCommissionWallet);
-        walletRepository.save(revenueWallet);
-
-        String referenceNo = generateReferenceNo();
-
-        TransactionEntity transaction = TransactionEntity.builder()
-                .referenceNo(referenceNo)
-                .senderWallet(customerWallet)
-                .receiverWallet(agentFloatWallet)
-                .amount(amount)
-                .fee(fee)
-                .commission(commission)
-                .transactionType(TransactionType.CASH_OUT.name())
-                .status(TransactionStatus.COMPLETED.name())
-                .build();
-
-        transactionRepository.save(transaction);
-
-        return new CashOutResponse(
-                referenceNo,
-                TransactionStatus.COMPLETED.name(),
-                customerWallet.getCurrency(),
-                amount,
-                fee,
-                commission,
-                new CashOutResponse.CustomerLeg(customer.getPhoneNumber(), customerWallet.getBalance()),
-                new CashOutResponse.AgentLeg(agentFloatWallet.getAccountNumber(), agentFloatWallet.getBalance(), agentCommissionWallet.getBalance()),
-                OffsetDateTime.now()
-        );
+    private MyTransactionItem toMyItem(TransactionEntity t, List<UUID> own) {
+        boolean incoming = own.contains(t.getReceiverWallet().getId()) && !own.contains(t.getSenderWallet().getId());
+        WalletEntity other = incoming ? t.getSenderWallet() : t.getReceiverWallet();
+        String name = other.getAccountName() == null ? "" : other.getAccountName();
+        int suffix = name.indexOf(" — ");
+        return new MyTransactionItem(t.getReferenceNo(), t.getTransactionType(), incoming ? "IN" : "OUT", t.getAmount(), t.getFee(),
+                t.getStatus(), t.getCreatedAt(), suffix == -1 ? name : name.substring(0, suffix),
+                NotificationFormat.maskedPhone(other.getUser().getPhone()), incoming && t.getMatchCode() != null ? null : t.getMatchCode());
     }
 
     //=================== VIEW TRANSACTIONS: "all" (admin) or "own" (customer/agent) ==============
@@ -332,7 +240,7 @@ public class TransactionService {
             }
         }
 
-        return toDetailResponse(transaction);
+        return toDetailResponse(transaction, canViewAll ? null : resolveOwnWalletIds(callerUserId), canViewAll);
     }
 
     // A caller is either a customer (one wallet: CUSTOMER_MAIN) or an agent (two wallets: float +
@@ -371,7 +279,15 @@ public class TransactionService {
         );
     }
 
-    private TransactionDetailResponse toDetailResponse(TransactionEntity transaction) {
+    /** Staff see full account numbers. Everyone else sees the last 4 only, plus who was on the other side. */
+    private TransactionDetailResponse toDetailResponse(TransactionEntity transaction, List<UUID> ownWalletIds, boolean staff) {
+        WalletEntity sender = transaction.getSenderWallet();
+        WalletEntity receiver = transaction.getReceiverWallet();
+        boolean incoming = ownWalletIds != null && ownWalletIds.contains(receiver.getId()) && !ownWalletIds.contains(sender.getId());
+        WalletEntity other = incoming ? sender : receiver;
+        String otherName = other.getAccountName() == null ? "" : other.getAccountName();
+        int suffix = otherName.indexOf(" — ");
+
         return new TransactionDetailResponse(
                 transaction.getReferenceNo(),
                 transaction.getTransactionType(),
@@ -380,12 +296,20 @@ public class TransactionService {
                 transaction.getCommission(),
                 transaction.getStatus(),
                 transaction.getCreatedAt(),
-                transaction.getSenderWallet().getAccountNumber(),
-                transaction.getSenderWallet().getAccountName(),
-                transaction.getReceiverWallet().getAccountNumber(),
-                transaction.getReceiverWallet().getAccountName(),
-                transaction.getExternalReference()
+                staff ? sender.getAccountNumber() : lastFour(sender.getAccountNumber()),
+                sender.getAccountName(),
+                staff ? receiver.getAccountNumber() : lastFour(receiver.getAccountNumber()),
+                receiver.getAccountName(),
+                transaction.getExternalReference(),
+                ownWalletIds == null ? null : (incoming ? "IN" : "OUT"),
+                ownWalletIds == null ? null : (suffix == -1 ? otherName : otherName.substring(0, suffix)),
+                ownWalletIds == null ? null : other.getUser() == null ? "" : com.application.e_wallet.notification.NotificationFormat.maskedPhone(other.getUser().getPhone()),
+                incoming ? null : transaction.getMatchCode()
         );
+    }
+
+    private static String lastFour(String accountNumber) {
+        return accountNumber == null || accountNumber.length() < 4 ? "" : "••" + accountNumber.substring(accountNumber.length() - 4);
     }
 
     private String generateReferenceNo() {

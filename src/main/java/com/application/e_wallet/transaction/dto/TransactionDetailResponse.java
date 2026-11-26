@@ -15,6 +15,13 @@ public record TransactionDetailResponse(
         String fromAccountName,
         String toAccountNumber,
         String toAccountName,
-        String externalReference
+        String externalReference,
+        /** IN or OUT from the point of view of the person reading; null for staff reading someone else's record. */
+        String direction,
+        String counterpartyName,
+        /** Masked, e.g. 0754 ••• 210. */
+        String counterpartyPhone,
+        /** Only for withdrawals at an agent. */
+        String matchCode
 ) {
 }

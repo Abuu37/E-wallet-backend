@@ -21,6 +21,15 @@ public class TariffController {
 
     private final TariffService tariffService;
 
+    /** Any signed-in person: the confirm screens show the fee before the PIN is typed. */
+    @GetMapping("/quote")
+    @PreAuthorize("isAuthenticated()")
+    public org.springframework.http.ResponseEntity<com.application.e_wallet.tariff.dto.QuoteResponse> quote(
+            @org.springframework.web.bind.annotation.RequestParam String type,
+            @org.springframework.web.bind.annotation.RequestParam java.math.BigDecimal amount) {
+        return org.springframework.http.ResponseEntity.ok(tariffService.quote(type, amount));
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('CHARGE_VIEW')")
     public ResponseEntity<ApiResponse<List<TariffBandItem>>> list() {

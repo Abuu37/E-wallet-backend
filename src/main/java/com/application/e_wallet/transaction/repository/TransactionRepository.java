@@ -180,4 +180,30 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
             """)
     BigDecimal sumSentBetween(@Param("walletId") UUID walletId, @Param("types") java.util.Collection<String> types,
                               @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
+
+    /** A customer's or agent's own transactions, with the filters of the Transactions screen. Empty strings mean "no filter". */
+    @Query(value = """
+            SELECT t FROM TransactionEntity t
+              JOIN FETCH t.senderWallet sw JOIN FETCH sw.user
+              JOIN FETCH t.receiverWallet rw JOIN FETCH rw.user
+            WHERE (sw.id IN :walletIds OR rw.id IN :walletIds)
+              AND (:type = '' OR t.transactionType = :type)
+              AND t.createdAt >= :start AND t.createdAt < :end
+              AND (:q = '' OR LOWER(t.referenceNo) LIKE CONCAT('%', :q, '%')
+                   OR LOWER(sw.accountName) LIKE CONCAT('%', :q, '%')
+                   OR LOWER(rw.accountName) LIKE CONCAT('%', :q, '%'))
+            ORDER BY t.createdAt DESC
+            """,
+            countQuery = """
+            SELECT COUNT(t) FROM TransactionEntity t
+            WHERE (t.senderWallet.id IN :walletIds OR t.receiverWallet.id IN :walletIds)
+              AND (:type = '' OR t.transactionType = :type)
+              AND t.createdAt >= :start AND t.createdAt < :end
+              AND (:q = '' OR LOWER(t.referenceNo) LIKE CONCAT('%', :q, '%')
+                   OR LOWER(t.senderWallet.accountName) LIKE CONCAT('%', :q, '%')
+                   OR LOWER(t.receiverWallet.accountName) LIKE CONCAT('%', :q, '%'))
+            """)
+    Page<TransactionEntity> findMine(@Param("walletIds") java.util.Collection<UUID> walletIds, @Param("type") String type,
+                                     @Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end,
+                                     @Param("q") String q, Pageable pageable);
 }

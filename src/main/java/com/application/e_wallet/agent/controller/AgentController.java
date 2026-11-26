@@ -60,6 +60,15 @@ public class AgentController {
                 .body(body);
     }
 
+    /** Active agents a customer can withdraw from. Open to any signed-in person. */
+    @GetMapping("/nearby")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<java.util.List<com.application.e_wallet.agent.dto.NearbyAgentResponse>> nearby(
+            @RequestParam(required = false, defaultValue = "") String region,
+            @RequestParam(required = false, defaultValue = "") String q) {
+        return ResponseEntity.ok(agentService.nearby(region, q));
+    }
+
     @GetMapping("/profile")
     @PreAuthorize("hasAuthority('AGENT_VIEW')")
     public ResponseEntity<ApiResponse<AgentDetailResponse>> getOwnProfile(Authentication authentication) {

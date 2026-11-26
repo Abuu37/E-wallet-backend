@@ -31,6 +31,11 @@ public interface WalletRepository extends JpaRepository<WalletEntity, UUID> {
     @Query("SELECT w FROM WalletEntity w WHERE w.walletType = :walletType")
     Optional<WalletEntity> findByWalletTypeForUpdate(@Param("walletType") WalletType walletType);
 
+    /** Lock several wallets in one statement, always in ascending id order, so two postings can never deadlock. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT w FROM WalletEntity w WHERE w.id IN :ids ORDER BY w.id")
+    java.util.List<WalletEntity> lockAllOrdered(@Param("ids") java.util.Collection<UUID> ids);
+
     @Query("SELECT COALESCE(SUM(w.balance), 0) FROM WalletEntity w WHERE w.walletType = :walletType")
     BigDecimal sumBalanceByWalletType(@Param("walletType") WalletType walletType);
 

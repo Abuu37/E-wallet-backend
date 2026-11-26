@@ -126,6 +126,7 @@ public class AgentService {
         AgentEntity agent = AgentEntity.builder()
                 .user(savedUser)
                 .agentNumber(agentNumber)
+                .tillNumber(identifierService.nextTillNumber())
                 .firstName(request.firstName().trim())
                 .middleName(middleName)
                 .lastName(request.lastName().trim())
@@ -198,6 +199,16 @@ public class AgentService {
         auditService.recordAsCurrentUser("AGENT_PIN_RESET", "AGENT", agent.getId(), null, null, "PIN reset by an administrator");
         notifier.notify(com.application.e_wallet.notification.NotificationKey.S4, com.application.e_wallet.notification.NotificationRecipient.of(user),
                 java.util.Map.of("name", agent.getBusinessName(), "agentId", agent.getAgentNumber(), "pin", oneTimePin));
+    }
+
+    //======================= Find an agent (customers) ====================//
+    @Transactional(readOnly = true)
+    public java.util.List<com.application.e_wallet.agent.dto.NearbyAgentResponse> nearby(String regionId, String q) {
+        String search = q == null ? "" : q.trim().toLowerCase();
+        return agentRepository.findNearby(regionId == null ? "" : regionId.trim(), search).stream()
+                .map(a -> new com.application.e_wallet.agent.dto.NearbyAgentResponse(a.getBusinessName(), a.getTillNumber(),
+                        a.getDistrict().getName(), a.getRegion().getName(), a.getAgentStatus() == AgentStatus.ACTIVE))
+                .toList();
     }
 
     //======================= List AN AGENT ====================//

@@ -44,6 +44,7 @@ public class TreasuryService {
     private final TreasuryRequestRepository treasuryRequestRepository;
     private final TransactionJournalRepository transactionJournalRepository;
     private final LedgerService ledgerService;
+    private final com.application.e_wallet.transaction.service.CommissionService commissionService;
 
     //=================== GET TREASURY OVERVIEW =============
     @Transactional(readOnly = true)
@@ -158,6 +159,9 @@ public class TreasuryService {
 
         walletRepository.save(revenueWallet);
         walletRepository.save(commissionWallet);
+
+        // Anything the pool could not pay while it was empty is paid now, oldest first.
+        commissionService.settleOwed(admin);
 
         return new CommissionTopupResponse(
                 journal.getReferenceNumber(),

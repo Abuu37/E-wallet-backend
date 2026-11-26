@@ -46,6 +46,10 @@ public class AgentEntity {
     @JoinColumn( name = "user_id", nullable = false, unique = true)
     private UserEntity user;
 
+    /** What a customer types to withdraw at this agent, e.g. 220341. */
+    @Column(name = "till_number", nullable = false, unique = true, length = 10)
+    private String tillNumber;
+
     @Column(name = "agent_number", nullable = false, unique = true, length = 30)
     private String agentNumber;
 
