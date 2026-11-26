@@ -41,7 +41,7 @@ class KycServiceTest {
     @BeforeEach
     void setUp() {
         KycLimitsProperties limits = new KycLimitsProperties();
-        service = new KycService(customerRepository, kycProvider, limits);
+        service = new KycService(customerRepository, kycProvider, limits, org.mockito.Mockito.mock(com.application.e_wallet.limits.LimitService.class), org.mockito.Mockito.mock(com.application.e_wallet.wallet.repository.WalletRepository.class));
         userId = UUID.randomUUID();
         customer = CustomerEntity.builder().id(UUID.randomUUID()).kycStatus(KycStatus.NOT_STARTED).build();
         when(customerRepository.findByUserId(userId)).thenReturn(Optional.of(customer));
