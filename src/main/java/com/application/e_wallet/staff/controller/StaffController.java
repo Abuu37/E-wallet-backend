@@ -70,6 +70,15 @@ public class StaffController {
         return ResponseEntity.ok(body);
     }
 
+    /** The signed-in staff member. Declared before the id route so "profile" is never read as an id. */
+    @GetMapping("/profile")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<com.application.e_wallet.staff.dto.StaffProfileResponse>> profile(Authentication authentication) {
+        AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.<com.application.e_wallet.staff.dto.StaffProfileResponse>builder()
+                .timestamp(Instant.now()).status(HttpStatus.OK.value()).message("Profile retrieved.").data(staffService.profile(principal.userId())).build());
+    }
+
     @GetMapping("/{staffId}")
     @PreAuthorize("hasAuthority('USER_VIEW')")
     public ResponseEntity<ApiResponse<StaffDetailResponse>> getStaff(@PathVariable UUID staffId) {

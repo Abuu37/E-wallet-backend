@@ -237,4 +237,13 @@ public class StaffService {
         auditService.recordAsCurrentUser("STAFF_PIN_RESET", "STAFF", staff.getId(), null, null, "PIN reset by an administrator");
         notifier.notify(com.application.e_wallet.notification.NotificationKey.S5, com.application.e_wallet.notification.NotificationRecipient.of(user), java.util.Map.of("pin", oneTimePin));
     }
+
+    /** The signed-in staff member's own name and job title. */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public com.application.e_wallet.staff.dto.StaffProfileResponse profile(java.util.UUID userId) {
+        StaffEntity staff = staffRepository.findByUserId(userId).orElseThrow(() -> new BadRequestException("Staff member not found"));
+        String full = java.util.stream.Stream.of(staff.getFirstName(), staff.getMiddleName(), staff.getLastName())
+                .filter(part -> part != null && !part.isBlank()).collect(java.util.stream.Collectors.joining(" "));
+        return new com.application.e_wallet.staff.dto.StaffProfileResponse(full, staff.getFirstName(), staff.getJobTitle());
+    }
 }
